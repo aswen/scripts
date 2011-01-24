@@ -12,7 +12,7 @@ This is a Munin plugin that gets the sizes of all mailboxes in bytes
 
 =head1 AUTHOR
 
-Contributed by Alexander Swen
+Contributed by Alexander Swen, Matthijs Langenberg
 
 =head1 LICENSE
 
