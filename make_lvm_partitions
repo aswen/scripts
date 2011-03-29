@@ -1,0 +1,58 @@
+#!/bin/bash
+# make_lvm_partitions
+# This makes a lvm type partition on each disk you define. you can use that partition than as a pv.
+# I use a lvm type partition rather than a raw device because it is better noticeable when running fdisk -l.
+
+# Alexander Swen
+# Private contact: alex@swen.nu, 06-21811135
+
+# CHANGELOG:
+# 2009-03-17	A.Swen	created.
+
+# SETTINGS
+date=$(date +%Y%m%d)
+me=$(basename $0)
+mydir=$(dirname $0)
+
+
+# FUNCTIONS
+die () {
+  rc=$1
+  shift
+  echo "========================================================================" >&2
+  echo "====                          FATAL  ERROR                          ====" >&2
+  echo "========================================================================" >&2
+  echo "" >&2
+  echo $@ >&2
+  exit $rc
+}
+
+usage () {
+  rc=$1
+  shift
+  echo "Usage $0 <disk>. example: $0 /dev/sda"
+  exit $rc
+}
+
+mklvm_part () {
+  [ -n "$1" ] && cat << EOF |fdisk $1
+n
+p
+1
+1
+
+t
+8e
+p
+w
+EOF
+}
+# SCRIPT
+[ ! "${USER}" == "root" ] && die 0 only root may do that
+[ $# -lt 1 ] && usage 1
+
+[ -b $1 ]||die 1 "device $1 not found"
+
+mklvm_part $1
+
+# END

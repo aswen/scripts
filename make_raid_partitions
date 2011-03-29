@@ -1,0 +1,76 @@
+#!/bin/bash
+# make_raid_partitions
+# This makes a raid type partition on each disk you define.
+# the endpoints that are used here are the places I use on some 2tb  disks. you may need to change this.
+
+# Alexander Swen
+# Private contact: alex@swen.nu, +316-21811135
+
+# CHANGELOG:
+# 2009-03-17	A.Swen	created.
+
+# SETTINGS
+date=$(date +%Y%m%d)
+me=$(basename $0)
+mydir=$(dirname $0)
+
+
+# FUNCTIONS
+die () {
+  rc=$1
+  shift
+  echo "========================================================================" >&2
+  echo "====                          FATAL  ERROR                          ====" >&2
+  echo "========================================================================" >&2
+  echo "" >&2
+  echo $@ >&2
+  exit $rc
+}
+
+mkraid_1_part () {
+  [ -n "$1" ] && cat << EOF |fdisk $1
+n
+p
+1
+1
+121601
+t
+fd
+p
+w
+EOF
+}
+
+mkraid_2_part () {
+  [ -n "$1" ] && cat << EOF |fdisk $1
+n
+p
+1
+1
+121618
+t
+fd
+p
+n
+p
+2
+121619
+243201
+t
+2
+fd
+p
+w
+EOF
+}
+
+# SCRIPT
+[ ! "${USER}" == "root" ] && die 0 only root may do that
+[ -n "$1" -a -z "$2" ] && mkraid_1_part $1
+[ -n "$1" -a -n "$2" ] && mkraid_2_part $1
+[ -z "$1" -a -z "$2" ] && die 1 "usage: $0 /dev/<disk> <2>"
+
+#24321 is laatste cylinder van hdc
+#for x in sde ;do mkraid_part /dev/$x;done
+
+# END
