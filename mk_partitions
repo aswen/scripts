@@ -1,0 +1,140 @@
+#!/bin/bash
+# mk_partitions
+# maakt partities op database server en maakt ook raid arrays
+
+# Alexander Swen
+# Private contact: alex@swen.nu, 023-5325777, 06-21811135
+
+# CHANGELOG:
+# 2011-03-30 	A.Swen	created.
+
+# SETTINGS
+date=$(date +%Y%m%d)
+me=$(basename $0)
+mydir=$(dirname $0)
+
+
+# FUNCTIONS
+die () {
+  rc=$1
+  shift
+  echo "==========================">&2
+  echo "====    FATAL  ERROR  ====" >&2
+  echo "==========================">&2
+  echo "" >&2
+  echo $@ >&2
+  exit $rc
+}
+
+usage () {
+  echo "==========================" >&2
+  echo "====       USAGE      ====" >&2
+  echo "==========================" >&2
+  echo "" >&2
+  echo "Usage: ${me} <userfile>" >&2
+  echo "" >&2
+  echo "example: ${me} /tmp/userlist" >&2
+  echo "" >&2
+  exit 1
+}
+
+get_options () {
+  [ $# -gt 0 ]||usage
+  while getopts "s:d:D:u:g:" opt;do
+    case ${opt} in
+      u) export user=`echo ${OPTARG}` ;;
+      *) usage;;
+    esac
+  done
+}
+
+make_os_drives () {
+  pvcreate -Z y --metadatasize 256k --dataalignmentoffset 0 --dataalignment 1024k /dev/cciss/c0d0
+  vgname=vg_system;
+  vgcreate ${vgname} /dev/cciss/c0d0
+  logvols="{b,r}oot swap tmp usr var srv"
+  for logvol in ${logvols};do
+    case ${logvol} in
+      boot) lvname=lv_boot; mp=/boot; size=300m; fs=ext3; fsopts="rw,noatime 0 2";                   reserved_space_pct=1;;
+      swap) lvname=lv_swap; mp=swap;  size=2g;   fs=swap; fsopts="defaults 0 0";;
+      root) lvname=lv_root; mp=/;     size=2g;   fs=ext3; fsopts="rw,noatime,errors=remount-ro 0 2"; reserved_space_pct=10;;
+      tmp)  lvname=lv_tmp;  mp=/tmp;  size=5g;   fs=ext3; fsopts="rw,noatime,errors=remount-ro 0 2"; reserved_space_pct=10;;
+      usr)  lvname=lv_usr;  mp=/usr;  size=5g;   fs=ext3; fsopts="rw,noatime,errors=remount-ro 0 2"; reserved_space_pct=10;;
+      var)  lvname=lv_var;  mp=/var;  size=7g;   fs=ext3; fsopts="rw,noatime,errors=remount-ro 0 2"; reserved_space_pct=10;;
+      srv)  lvname=lv_srv;  mp=/srv;  size=10g;  fs=xfs;  fsopts="rw,noatime,errors=remount-ro 0 2";;
+    esac
+    lvcreate -L${size} -n ${lvname} ${vgname}
+    case ${fs} in
+      ext3) mkfs -t ${fs} -m${reserved_space_pct} -E stride=64 -L ${lvname} /dev/${vgname}/${lvname};;
+      xfs) mkfs -t ${fs} -L ${lvname} /dev/${vgname}/${lvname};;
+      swap) mkswap -L ${lvname} /dev/${vgname}/${lvname};;
+    esac
+    echo -e "LABEL=${lvname}\t${mp}\t${fs}\t${fsopts}" >>/etc/fstab
+  done
+  # moet ik nog op /target mounten?
+}
+
+# SCRIPT
+[ ${UID} -gt 0 ] && die 0 only root may do that
+
+# eerst raid controller configureren
+init_array_cfg=/tmp/fai/init_array_cfg
+init_array_cfg_simple=/tmp/fai/init_array_cfg_simple
+array_slot=$(hpacucli ctrl all show|awk '/Smart Array/ {print $6}')
+hpacucli ctrl slot=${array_slot} show config > ${init_array_cfg_simple}
+hpacucli ctrl slot=${array_slot} show config detail > ${init_array_cfg}
+num_boxes=$(grep -A2 physicaldrive ${init_array_cfg}|grep Box|sort -u|wc -l)
+
+# raid controller krijgt volgende indeling:
+# logical drive 1 R1 68G (os)
+# logical drive 2 R1 558G (backup)
+# logical drive 3 R6 546G (mysql)
+# logical drive 4 R1 68G (log)
+
+case ${num_boxes} in 
+  1)
+    mirror_drives=$(grep -A10 unassigned ${init_array_cfg_simple}|grep physicaldrive|head -2|awk '{printf $2",";}; END{print ;}'|sed -e 's/,$//g')
+    spare_drive=$(grep -A10 unassigned ${init_array_cfg_simple}|grep physicaldrive|tail -1|awk '{print $2}')
+    hpacucli ctrl slot=${array_slot} create type=ld drives=${mirror_drives} raid=1 ss=256 sectors=32 aa=enable
+    hpacucli ctrl slot=${array_slot} array b add spares=${spare_drive}
+    hpacucli ctrl slot=${array_slot} show config > ${init_array_cfg_simple}
+    make_os_drives
+    echo AP-server
+  ;;
+  2)
+    mirror_drives=$(awk '/bay 1/ {printf $2",";}; END{print ;}' ${init_array_cfg_simple}|sed -e 's/,$//g')
+    hpacucli ctrl slot=${array_slot} create type=ld drives=${mirror_drives} raid=1 ss=256 sectors=32 aa=enable
+    make_os_drives
+
+    mirror_drives=$(awk '/bay 8/ {printf $2",";}; END{print ;}' ${init_array_cfg_simple}|sed -e 's/,$//g')
+    hpacucli ctrl slot=${array_slot} create type=ld drives=${mirror_drives} raid=1 ss=256 sectors=32 aa=enable
+    pvcreate -Z y --metadatasize 256k --dataalignmentoffset 0 --dataalignment 1024k /dev/cciss/c0d1
+    vgname=vg_backup; lvname=lv_backup; mp=/var/tmp/mylvmbackup/backup; size="100%vg"; fs=xfs; fsopts="rw,noatime,largeio 0 2"
+    vgcreate ${vgname} /dev/cciss/c0d1
+    lvcreate -l${size} -n ${lvname} ${vgname}
+    mkfs -t ${fs} -L ${lvname} /dev/${vgname}/${lvname}
+    echo -e "LABEL=${lvname}\t${mp}\t${fs}\t${fsopts}" >>/etc/fstab
+ 
+    mirror_drives=$(awk '/bay [3-7]/ {printf $2",";}; END{print ;}' ${init_array_cfg_simple}|sed -e 's/,$//g')
+    hpacucli ctrl slot=${array_slot} create type=ld drives=${mirror_drives} raid=6 ss=256 sectors=32 aa=enable
+    pvcreate -Z y --metadatasize 256k --dataalignmentoffset 0 --dataalignment 1024k /dev/cciss/c0d2
+    vgname=vg_my_data; lvname=lv_my_data; mp=/srv/mysql; size="90%vg"; fs=xfs; fsopts="rw,noatime,largeio 0 2"
+    vgcreate ${vgname} /dev/cciss/c0d2
+    lvcreate -l${size} -n ${lvname} ${vgname}
+    mkfs -t ${fs} -L ${lvname} /dev/${vgname}/${lvname}
+    echo -e "LABEL=${lvname}\t${mp}\t${fs}\t${fsopts}" >>/etc/fstab
+
+    mirror_drives=$(awk '/bay 2/ {printf $2",";}; END{print ;}' ${init_array_cfg_simple}|sed -e 's/,$//g')
+    hpacucli ctrl slot=${array_slot} create type=ld drives=${mirror_drives} raid=1 ss=256 sectors=32 aa=enable
+    pvcreate -Z y --metadatasize 256k --dataalignmentoffset 0 --dataalignment 1024k /dev/cciss/c0d3
+    vgname=vg_my_log; lvname=lv_my_log; mp=/var/tmp/mylvmbackup/backup; size="100%vg"; fs=xfs; fsopts="rw,noatime,largeio 0 2"
+    vgcreate ${vgname} /dev/cciss/c0d3
+    lvcreate -l${size} -n ${lvname} ${vgname}
+    mkfs -t ${fs} -L ${lvname} /dev/${vgname}/${lvname}
+    echo -e "LABEL=${lvname}\t${mp}\t${fs}\t${fsopts}" >>/etc/fstab
+
+    echo DB-server
+  ;;
+esac
+
+# END
