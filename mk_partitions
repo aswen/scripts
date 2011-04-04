@@ -61,7 +61,7 @@ make_os_drives () {
       tmp)  lvname=lv_tmp;  mp=/tmp;  size=5g;   fs=ext3; fsopts="rw,noatime,errors=remount-ro 0 2"; reserved_space_pct=10;;
       usr)  lvname=lv_usr;  mp=/usr;  size=5g;   fs=ext3; fsopts="rw,noatime,errors=remount-ro 0 2"; reserved_space_pct=10;;
       var)  lvname=lv_var;  mp=/var;  size=7g;   fs=ext3; fsopts="rw,noatime,errors=remount-ro 0 2"; reserved_space_pct=10;;
-      srv)  lvname=lv_srv;  mp=/srv;  size=10g;  fs=xfs;  fsopts="rw,noatime,errors=remount-ro 0 2";;
+      srv)  lvname=lv_srv;  mp=/srv;  size=10g;  fs=xfs;  fsopts="rw,noatime,largeio 0 2";;
     esac
     lvcreate -L${size} -n ${lvname} ${vgname}
     case ${fs} in
