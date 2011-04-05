@@ -49,10 +49,12 @@ get_options () {
 }
 
 make_os_drives () {
+  tmpfile=$(mktemp)
   pvcreate -Z y --metadatasize 256k --dataalignmentoffset 0 --dataalignment 1024k /dev/cciss/c0d0
   vgname=vg_system;
   vgcreate ${vgname} /dev/cciss/c0d0
   logvols="{b,r}oot swap tmp usr var srv"
+  [ -d /target ] || mkdir /target
   for logvol in ${logvols};do
     case ${logvol} in
       boot) lvname=lv_boot; mp=/boot; size=300m; fs=ext3; fsopts="rw,noatime 0 2";                   reserved_space_pct=1;;
@@ -69,8 +71,11 @@ make_os_drives () {
       xfs) mkfs -t ${fs} -L ${lvname} /dev/${vgname}/${lvname};;
       swap) mkswap -L ${lvname} /dev/${vgname}/${lvname};;
     esac
-    echo -e "LABEL=${lvname}\t${mp}\t${fs}\t${fsopts}" >>/etc/fstab
+    echo -e "LABEL=${lvname}\t${mp}\t${fs}\t${fsopts}" >>${tmpfile}
+    [ -d /target/${mp} ] || mkdir -p /target/${mp}
+    mount /dev/${vgname}/${lvname} /target/${mp}
   done
+  mv ${tmpfile} /target/etc/fstab
   # moet ik nog op /target mounten?
 }
 
@@ -114,6 +119,8 @@ case ${num_boxes} in
     lvcreate -l${size} -n ${lvname} ${vgname}
     mkfs -t ${fs} -L ${lvname} /dev/${vgname}/${lvname}
     echo -e "LABEL=${lvname}\t${mp}\t${fs}\t${fsopts}" >>/etc/fstab
+    [ -d /target/${mp} ] || mkdir -p /target/${mp}
+    mount /dev/${vgname}/${lvname} /target/${mp}
  
     mirror_drives=$(awk '/bay [3-7]/ {printf $2",";}; END{print ;}' ${init_array_cfg_simple}|sed -e 's/,$//g')
     hpacucli ctrl slot=${array_slot} create type=ld drives=${mirror_drives} raid=6 ss=256 sectors=32 aa=enable
@@ -123,6 +130,8 @@ case ${num_boxes} in
     lvcreate -l${size} -n ${lvname} ${vgname}
     mkfs -t ${fs} -L ${lvname} /dev/${vgname}/${lvname}
     echo -e "LABEL=${lvname}\t${mp}\t${fs}\t${fsopts}" >>/etc/fstab
+    [ -d /target/${mp} ] || mkdir -p /target/${mp}
+    mount /dev/${vgname}/${lvname} /target/${mp}
 
     mirror_drives=$(awk '/bay 2/ {printf $2",";}; END{print ;}' ${init_array_cfg_simple}|sed -e 's/,$//g')
     hpacucli ctrl slot=${array_slot} create type=ld drives=${mirror_drives} raid=1 ss=256 sectors=32 aa=enable
@@ -132,6 +141,8 @@ case ${num_boxes} in
     lvcreate -l${size} -n ${lvname} ${vgname}
     mkfs -t ${fs} -L ${lvname} /dev/${vgname}/${lvname}
     echo -e "LABEL=${lvname}\t${mp}\t${fs}\t${fsopts}" >>/etc/fstab
+    [ -d /target/${mp} ] || mkdir -p /target/${mp}
+    mount /dev/${vgname}/${lvname} /target/${mp}
 
     echo DB-server
   ;;
