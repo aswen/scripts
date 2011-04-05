@@ -104,7 +104,6 @@ case ${num_boxes} in
     hpacucli ctrl slot=${array_slot} array b add spares=${spare_drive}
     hpacucli ctrl slot=${array_slot} show config > ${init_array_cfg_simple}
     make_os_drives
-    echo AP-server
   ;;
   2)
     mirror_drives=$(awk '/bay 1/ {printf $2",";}; END{print ;}' ${init_array_cfg_simple}|sed -e 's/,$//g')
@@ -144,11 +143,11 @@ case ${num_boxes} in
     [ -d /target/${mp} ] || mkdir -p /target/${mp}
     mount /dev/${vgname}/${lvname} /target/${mp}
 
-    echo DB-server
   ;;
 esac
 
 # to skip any default partition commands:
-touch $LOGDIR/skip.partition
+#touch $LOGDIR/skip.partition
+skiptask partition
 
 # END
