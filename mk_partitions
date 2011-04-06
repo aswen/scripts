@@ -1,5 +1,5 @@
 #!/bin/bash
-# mk_partitions
+# git://github.com/aswen/scripts.git mk_partitions
 # maakt partities op database server en maakt ook raid arrays
 
 # Alexander Swen
@@ -7,6 +7,7 @@
 
 # CHANGELOG:
 # 2011-03-30 	A.Swen	created.
+# 2011-04-06  A.Swen  removed some bugs (order in which filesystems where created in make_os_drives function).
 
 # SETTINGS
 date=$(date +%Y%m%d)
@@ -26,40 +27,18 @@ die () {
   exit $rc
 }
 
-usage () {
-  echo "==========================" >&2
-  echo "====       USAGE      ====" >&2
-  echo "==========================" >&2
-  echo "" >&2
-  echo "Usage: ${me} <userfile>" >&2
-  echo "" >&2
-  echo "example: ${me} /tmp/userlist" >&2
-  echo "" >&2
-  exit 1
-}
-
-get_options () {
-  [ $# -gt 0 ]||usage
-  while getopts "s:d:D:u:g:" opt;do
-    case ${opt} in
-      u) export user=`echo ${OPTARG}` ;;
-      *) usage;;
-    esac
-  done
-}
-
 make_os_drives () {
   tmpfile=$(mktemp)
   pvcreate -Z y --metadatasize 256k --dataalignmentoffset 0 --dataalignment 1024k /dev/cciss/c0d0
   vgname=vg_system;
   vgcreate ${vgname} /dev/cciss/c0d0
-  logvols="{b,r}oot swap tmp usr var srv"
-  [ -d /target ] || mkdir /target
+  # be sure to have root in first position because it has to create the /target mountpoint
+  logvols="root boot swap tmp usr var srv"
   for logvol in ${logvols};do
     case ${logvol} in
+      root) lvname=lv_root; mp=/;     size=2g;   fs=ext3; fsopts="rw,noatime,errors=remount-ro 0 2"; reserved_space_pct=10;;
       boot) lvname=lv_boot; mp=/boot; size=300m; fs=ext3; fsopts="rw,noatime 0 2";                   reserved_space_pct=1;;
       swap) lvname=lv_swap; mp=swap;  size=2g;   fs=swap; fsopts="defaults 0 0";;
-      root) lvname=lv_root; mp=/;     size=2g;   fs=ext3; fsopts="rw,noatime,errors=remount-ro 0 2"; reserved_space_pct=10;;
       tmp)  lvname=lv_tmp;  mp=/tmp;  size=5g;   fs=ext3; fsopts="rw,noatime,errors=remount-ro 0 2"; reserved_space_pct=10;;
       usr)  lvname=lv_usr;  mp=/usr;  size=5g;   fs=ext3; fsopts="rw,noatime,errors=remount-ro 0 2"; reserved_space_pct=10;;
       var)  lvname=lv_var;  mp=/var;  size=7g;   fs=ext3; fsopts="rw,noatime,errors=remount-ro 0 2"; reserved_space_pct=10;;
@@ -67,16 +46,26 @@ make_os_drives () {
     esac
     lvcreate -L${size} -n ${lvname} ${vgname}
     case ${fs} in
+      swap) mkswap -L ${lvname} /dev/${vgname}/${lvname};;
       ext3) mkfs -t ${fs} -m${reserved_space_pct} -E stride=64 -L ${lvname} /dev/${vgname}/${lvname};;
       xfs) mkfs -t ${fs} -L ${lvname} /dev/${vgname}/${lvname};;
-      swap) mkswap -L ${lvname} /dev/${vgname}/${lvname};;
+      *) mkfs -t ${fs} -L ${lvname} /dev/${vgname}/${lvname};;
     esac
-    echo -e "LABEL=${lvname}\t${mp}\t${fs}\t${fsopts}" >>${tmpfile}
-    [ -d /target/${mp} ] || mkdir -p /target/${mp}
-    mount /dev/${vgname}/${lvname} /target/${mp}
+    echo -e "LABEL=${lvname}\t${mp}\t${fs}\t${fsopts}" >> ${tmpfile}
+    case ${lvname} in
+      lv_swap) continue ;;
+      lv_root)
+        [ -d /target ] || mkdir /target
+        mount /dev/${vgname}/${lvname} /target
+        [ -d /target/etc ] || mkdir /target/etc
+      ;;
+      *)
+        [ -d /target/${mp} ] || mkdir -p /target/${mp}
+        mount /dev/${vgname}/${lvname} /target/${mp}
+      ;;
+    esac
   done
   mv ${tmpfile} /target/etc/fstab
-  # moet ik nog op /target mounten?
 }
 
 # SCRIPT
@@ -135,7 +124,7 @@ case ${num_boxes} in
     mirror_drives=$(awk '/bay 2/ {printf $2",";}; END{print ;}' ${init_array_cfg_simple}|sed -e 's/,$//g')
     hpacucli ctrl slot=${array_slot} create type=ld drives=${mirror_drives} raid=1 ss=256 sectors=32 aa=enable
     pvcreate -Z y --metadatasize 256k --dataalignmentoffset 0 --dataalignment 1024k /dev/cciss/c0d3
-    vgname=vg_my_log; lvname=lv_my_log; mp=/var/tmp/mylvmbackup/backup; size="100%vg"; fs=xfs; fsopts="rw,noatime,largeio 0 2"
+    vgname=vg_my_log; lvname=lv_my_log; mp=/srv/mysqllog; size="100%vg"; fs=xfs; fsopts="rw,noatime,largeio 0 2"
     vgcreate ${vgname} /dev/cciss/c0d3
     lvcreate -l${size} -n ${lvname} ${vgname}
     mkfs -t ${fs} -L ${lvname} /dev/${vgname}/${lvname}
