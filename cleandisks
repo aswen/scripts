@@ -1,0 +1,67 @@
+#!/bin/bash
+# cleandisks
+# not realy a cleanup (I mean not secure) just removes any config from all disks on a HP system that I tested...
+
+# Alexander Swen
+# Private contact: alex@swen.nu, 023-5325777, 06-21811135
+
+# CHANGELOG:
+# 2011-04-06	A.Swen	created.
+
+# SETTINGS
+date=$(date +%Y%m%d)
+me=$(basename $0)
+mydir=$(dirname $0)
+
+
+# FUNCTIONS
+die () {
+  rc=$1
+  shift
+  echo "==========================">&2
+  echo "====    FATAL  ERROR  ====" >&2
+  echo "==========================">&2
+  echo "" >&2
+  echo $@ >&2
+  exit $rc
+}
+
+usage () {
+  echo "==========================" >&2
+  echo "====       USAGE      ====" >&2
+  echo "==========================" >&2
+  echo "" >&2
+  echo "Usage: ${me} <userfile>" >&2
+  echo "" >&2
+  echo "example: ${me} /tmp/userlist" >&2
+  echo "" >&2
+  exit 1
+}
+
+get_options () {
+  [ $# -gt 0 ]||usage
+  while getopts "s:d:D:u:g:" opt;do
+    case ${opt} in
+      u) export user=`echo ${OPTARG}` ;;
+      *) usage;;
+    esac
+  done
+}
+
+# SCRIPT
+[ ${UID} -gt 0 ] && die 0 only root may do that
+
+echo "This script erase a lot of stuf (everytrhing that is), are you sure? [y,N]"
+read ans
+case $ans in
+  y|Y|yes|YES)
+    lvs|awk '/lv_/ {print $1" "$2}'|while read lv vg;do lvremove -f /dev/${vg}/${lv};done
+    vgs|awk '/vg_/ {print $1}'|while read vg;do vgremove ${vg};done
+    pvs|awk '/block/ {print $1}'|while read pv;do pvremoce ${pv};done
+    for x in d c b a;do hpacucli ctrl slot=0 array $x delete forced;done
+  ;;
+  *) echo OK;;
+esac
+   
+
+# END
