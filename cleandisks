@@ -55,7 +55,11 @@ echo "This script erase a lot of stuf (everytrhing that is), are you sure? [y,N]
 read ans
 case $ans in
   y|Y|yes|YES)
-    lvs|awk '/lv_/ {print $1" "$2}'|while read lv vg;do lvremove -f /dev/${vg}/${lv};done
+    lvs|awk '/lv_/ {print $1" "$2}'|while read lv vg;do
+      mp=$(mount |grep "${lv}"|awk '{print $3}')
+      [ -n "${mp}" -a -d "${mp}" ] && umount ${mp}|| echo this is weird
+      lvremove -f /dev/${vg}/${lv}
+    done
     vgs|awk '/vg_/ {print $1}'|while read vg;do vgremove ${vg};done
     pvs|awk '/block/ {print $1}'|while read pv;do pvremoce ${pv};done
     for x in d c b a;do hpacucli ctrl slot=0 array $x delete forced;done
