@@ -65,7 +65,7 @@ make_os_drives () {
 #        mount /dev/${vgname}/${lvname} /target/${mp}
 #      ;;
 #    esac
-#  done
+  done
 #  cp ${tmpfile} /tmp/fai/fstab
 #  mv ${tmpfile} /target/etc/fstab
 }
