@@ -60,6 +60,7 @@ case $ans in
       [ -n "${mp}" -a -d "${mp}" ] && umount ${mp}|| echo this is weird
       lvremove -f /dev/${vg}/${lv}
     done
+    umount /target && lvremove -f /dev/vg_system/lv_root
     vgs|awk '/vg_/ {print $1}'|while read vg;do vgremove ${vg};done
     pvs|awk '/block/ {print $1}'|while read pv;do pvremove ${pv};done
     for x in d c b a;do hpacucli ctrl slot=0 array $x delete forced;done
