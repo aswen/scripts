@@ -28,7 +28,7 @@ die () {
 }
 
 make_os_drives () {
-  tmpfile=$(mktemp)
+#  tmpfile=$(mktemp)
   pvcreate -Z y --metadatasize 256k --dataalignmentoffset 0 --dataalignment 1024k /dev/cciss/c0d0
   vgname=vg_system;
   vgcreate ${vgname} /dev/cciss/c0d0
@@ -51,22 +51,23 @@ make_os_drives () {
       xfs) mkfs -t ${fs} -L ${lvname} /dev/${vgname}/${lvname};;
       *) mkfs -t ${fs} -L ${lvname} /dev/${vgname}/${lvname};;
     esac
-    echo -e "LABEL=${lvname}\t${mp}\t${fs}\t${fsopts}" >> ${tmpfile}
-    case ${lvname} in
-      lv_swap) continue ;;
-      lv_root)
-        [ -d /target ] || mkdir /target
-        mount /dev/${vgname}/${lvname} /target
-        [ -d /target/etc ] || mkdir /target/etc
-      ;;
-      *)
-        [ -d /target/${mp} ] || mkdir -p /target/${mp}
-        mount /dev/${vgname}/${lvname} /target/${mp}
-      ;;
-    esac
-  done
-  cp ${tmpfile} /tmp/fai/fstab
-  mv ${tmpfile} /target/etc/fstab
+#    echo -e "LABEL=${lvname}\t${mp}\t${fs}\t${fsopts}" >> ${tmpfile}
+    echo -e "LABEL=${lvname}\t${mp}\t${fs}\t${fsopts}" >> /tmp/fai/fstab
+#    case ${lvname} in
+#      lv_swap) continue ;;
+#      lv_root)
+#        [ -d /target ] || mkdir /target
+#        mount /dev/${vgname}/${lvname} /target
+#        [ -d /target/etc ] || mkdir /target/etc
+#      ;;
+#      *)
+#        [ -d /target/${mp} ] || mkdir -p /target/${mp}
+#        mount /dev/${vgname}/${lvname} /target/${mp}
+#      ;;
+#    esac
+#  done
+#  cp ${tmpfile} /tmp/fai/fstab
+#  mv ${tmpfile} /target/etc/fstab
 }
 
 # SCRIPT
@@ -81,7 +82,7 @@ hpacucli ctrl slot=${array_slot} show config detail > ${init_array_cfg}
 num_boxes=$(grep -A2 physicaldrive ${init_array_cfg}|grep Box|sort -u|wc -l)
 
 # raid controller krijgt volgende indeling:
-# logical drive 1 R1 68G (os)
+# logical drive 1 R1 68G (os) 
 # logical drive 2 R1 558G (backup)
 # logical drive 3 R6 546G (mysql)
 # logical drive 4 R1 68G (log)
@@ -107,9 +108,9 @@ case ${num_boxes} in
     vgcreate ${vgname} /dev/cciss/c0d1
     lvcreate -l${size} -n ${lvname} ${vgname}
     mkfs -t ${fs} -L ${lvname} /dev/${vgname}/${lvname}
-    echo -e "LABEL=${lvname}\t${mp}\t${fs}\t${fsopts}" >>/etc/fstab
-    [ -d /target/${mp} ] || mkdir -p /target/${mp}
-    mount /dev/${vgname}/${lvname} /target/${mp}
+    echo -e "LABEL=${lvname}\t${mp}\t${fs}\t${fsopts}" >>/tmp/fai/fstab
+#    [ -d /target/${mp} ] || mkdir -p /target/${mp}
+#    mount /dev/${vgname}/${lvname} /target/${mp}
  
     mirror_drives=$(awk '/bay [3-7]/ {printf $2",";}; END{print ;}' ${init_array_cfg_simple}|sed -e 's/,$//g')
     hpacucli ctrl slot=${array_slot} create type=ld drives=${mirror_drives} raid=6 ss=256 sectors=32 aa=enable
@@ -118,9 +119,9 @@ case ${num_boxes} in
     vgcreate ${vgname} /dev/cciss/c0d2
     lvcreate -l${size} -n ${lvname} ${vgname}
     mkfs -t ${fs} -L ${lvname} /dev/${vgname}/${lvname}
-    echo -e "LABEL=${lvname}\t${mp}\t${fs}\t${fsopts}" >>/etc/fstab
-    [ -d /target/${mp} ] || mkdir -p /target/${mp}
-    mount /dev/${vgname}/${lvname} /target/${mp}
+    echo -e "LABEL=${lvname}\t${mp}\t${fs}\t${fsopts}" >>/tmp/fai/fstab
+#    [ -d /target/${mp} ] || mkdir -p /target/${mp}
+#    mount /dev/${vgname}/${lvname} /target/${mp}
 
     mirror_drives=$(awk '/bay 2/ {printf $2",";}; END{print ;}' ${init_array_cfg_simple}|sed -e 's/,$//g')
     hpacucli ctrl slot=${array_slot} create type=ld drives=${mirror_drives} raid=1 ss=256 sectors=32 aa=enable
@@ -129,9 +130,9 @@ case ${num_boxes} in
     vgcreate ${vgname} /dev/cciss/c0d3
     lvcreate -l${size} -n ${lvname} ${vgname}
     mkfs -t ${fs} -L ${lvname} /dev/${vgname}/${lvname}
-    echo -e "LABEL=${lvname}\t${mp}\t${fs}\t${fsopts}" >>/etc/fstab
-    [ -d /target/${mp} ] || mkdir -p /target/${mp}
-    mount /dev/${vgname}/${lvname} /target/${mp}
+    echo -e "LABEL=${lvname}\t${mp}\t${fs}\t${fsopts}" >>/tmp/fai/fstab
+#    [ -d /target/${mp} ] || mkdir -p /target/${mp}
+#    mount /dev/${vgname}/${lvname} /target/${mp}
 
   ;;
 esac
