@@ -47,7 +47,7 @@ make_os_drives () {
     lvcreate -L${size} -n ${lvname} ${vgname}
     case ${fs} in
       swap) mkswap -L ${lvname} /dev/${vgname}/${lvname};;
-      ext3) mkfs -t ${fs} -m${reserved_space_pct} -E stride=64 -L ${lvname} /dev/${vgname}/${lvname};;
+      ext3) mkfs -t ${fs} -L ${lvname} -m ${reserved_space_pct} -E stride=64 /dev/${vgname}/${lvname};;
       xfs) mkfs -t ${fs} -L ${lvname} /dev/${vgname}/${lvname};;
       *) mkfs -t ${fs} -L ${lvname} /dev/${vgname}/${lvname};;
     esac
