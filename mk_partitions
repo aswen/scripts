@@ -28,23 +28,44 @@ die () {
 }
 
 make_os_drives () {
-#  tmpfile=$(mktemp)
-  pvcreate -Z y --metadatasize 256k --dataalignmentoffset 0 --dataalignment 1024k /dev/cciss/c0d0
+  echo;echo "${date} ${me} Starting make_os_drives"
+  echo;echo "${date} ${me} First we create two partitions on the system mirror using fdisk:"
+  cat << EOF |fdisk /dev/cciss/c0d0
+n
+p
+1
+1
+300M
+n
+p
+2
+301
+
+t
+2
+8e
+p
+w
+EOF
+  #use the second partition as pv
+  echo;echo "${date} ${me} The 2nd partition will be a physical volume"
+  pvcreate -Z y --metadatasize 256k --dataalignmentoffset 0 --dataalignment 1024k /dev/cciss/c0d0p2
   vgname=vg_system;
-  vgcreate ${vgname} /dev/cciss/c0d0
-  # be sure to have root in first position because it has to create the /target mountpoint
-  logvols="root boot swap tmp usr var srv"
+  echo;echo "${date} ${me} And on top of that we make a volumegroup ${vgname}"
+  vgcreate ${vgname} /dev/cciss/c0d0p2
+  logvols="root swap tmp usr var srv"
   for logvol in ${logvols};do
     case ${logvol} in
       root) lvname=lv_root; mp=/;     size=2g;   fs=ext3; fsopts="rw,noatime,errors=remount-ro 0 2"; reserved_space_pct=10;;
-      boot) lvname=lv_boot; mp=/boot; size=300m; fs=ext3; fsopts="rw,noatime 0 2";                   reserved_space_pct=1;;
-      swap) lvname=lv_swap; mp=swap;  size=2g;   fs=swap; fsopts="defaults 0 0";;
       tmp)  lvname=lv_tmp;  mp=/tmp;  size=5g;   fs=ext3; fsopts="rw,noatime,errors=remount-ro 0 2"; reserved_space_pct=10;;
       usr)  lvname=lv_usr;  mp=/usr;  size=5g;   fs=ext3; fsopts="rw,noatime,errors=remount-ro 0 2"; reserved_space_pct=10;;
       var)  lvname=lv_var;  mp=/var;  size=7g;   fs=ext3; fsopts="rw,noatime,errors=remount-ro 0 2"; reserved_space_pct=10;;
       srv)  lvname=lv_srv;  mp=/srv;  size=10g;  fs=xfs;  fsopts="rw,noatime,largeio 0 2";;
+      swap) lvname=lv_swap; mp=swap;  size=2g;   fs=swap; fsopts="defaults 0 0";;
     esac
+    echo;echo "${date} ${me} Create logical volume ${logvol} within volumegroup ${vgname}"
     lvcreate -L${size} -n ${lvname} ${vgname}
+    echo;echo "${date} ${me} Make /dev/${vgname}/${lvname} a ${fs} filesystem"
     case ${fs} in
       swap) mkswap -L ${lvname} /dev/${vgname}/${lvname};;
       ext3) mkfs -t ${fs} -L ${lvname} -m ${reserved_space_pct} -E stride=64 /dev/${vgname}/${lvname};;
@@ -68,10 +89,19 @@ make_os_drives () {
   done
 #  cp ${tmpfile} /tmp/fai/fstab
 #  mv ${tmpfile} /target/etc/fstab
+
+  # create a /boot filesystem on the 1st partition
+  echo;echo "${date} ${me} /dev/cciss/s0d0p1 will have the /boot filesystem"
+  name=lv_boot; mp=/boot; size=300m; fs=ext3; fsopts="rw,noatime 0 2";reserved_space_pct=1
+  mkfs -t ${fs} -L ${name} -m ${reserved_space_pct} -E stride=64 /dev/cciss/c0d0p1
+  echo -e "LABEL=${name}\t${mp}\t${fs}\t${fsopts}" >> /tmp/fai/fstab
+  # GRUB needs to know where to write it to, so:
+  echo "BOOT_DEVICE=/dev/cciss/c0d0p1" >> /tmp/fai/disk_var.sh
+  echo;echo "${date} ${me} finished make_os_drives finished"
 }
 
 # SCRIPT
-[ ${UID} -gt 0 ] && die 0 only root may do that
+echo;echo "${date} ${me} Starting";echo
 
 # eerst raid controller configureren
 init_array_cfg=/tmp/fai/init_array_cfg
@@ -89,46 +119,69 @@ num_boxes=$(grep -A2 physicaldrive ${init_array_cfg}|grep Box|sort -u|wc -l)
 
 case ${num_boxes} in 
   1)
+    echo;echo "${date} ${me} One disk box found on HP Array controller in slot ${array_slot}. This must be an application server..."
     mirror_drives=$(grep -A10 unassigned ${init_array_cfg_simple}|grep physicaldrive|head -2|awk '{printf $2",";}; END{print ;}'|sed -e 's/,$//g')
     spare_drive=$(grep -A10 unassigned ${init_array_cfg_simple}|grep physicaldrive|tail -1|awk '{print $2}')
+    echo;echo "${date} ${me} Creating a raid 1 array using disks ${mirror_drives}"
     hpacucli ctrl slot=${array_slot} create type=ld drives=${mirror_drives} raid=1 ss=256 sectors=32 aa=enable
+    echo;echo "${date} ${me} Adding drive ${spare_drive} to the mirror array"
     hpacucli ctrl slot=${array_slot} array b add spares=${spare_drive}
+    echo;echo "${date} ${me} Refreshing the ${init_array_cfg_simple} file"
     hpacucli ctrl slot=${array_slot} show config > ${init_array_cfg_simple}
+    echo;echo "${date} ${me} Calling function make_os_drives"
     make_os_drives
   ;;
   2)
+    echo;echo "${date} ${me} Two disk boxes found on HP Array controller in slot ${array_slot}. This must be a database server..."
     mirror_drives=$(awk '/bay 1/ {printf $2",";}; END{print ;}' ${init_array_cfg_simple}|sed -e 's/,$//g')
+    echo;echo "${date} ${me} Creating a raid 1 array using disks ${mirror_drives}"
     hpacucli ctrl slot=${array_slot} create type=ld drives=${mirror_drives} raid=1 ss=256 sectors=32 aa=enable
+    echo;echo "${date} ${me} Calling function make_os_drives"
     make_os_drives
 
     mirror_drives=$(awk '/bay 8/ {printf $2",";}; END{print ;}' ${init_array_cfg_simple}|sed -e 's/,$//g')
+    echo;echo "${date} ${me} Creating a raid 1 array using disks ${mirror_drives}"
     hpacucli ctrl slot=${array_slot} create type=ld drives=${mirror_drives} raid=1 ss=256 sectors=32 aa=enable
+    echo;echo "${date} ${me} The whole disk will be a physical volume"
     pvcreate -Z y --metadatasize 256k --dataalignmentoffset 0 --dataalignment 1024k /dev/cciss/c0d1
     vgname=vg_backup; lvname=lv_backup; mp=/var/tmp/mylvmbackup/backup; size="100%vg"; fs=xfs; fsopts="rw,noatime,largeio 0 2"
+    echo;echo "${date} ${me} And on top of that we make a volumegroup ${vgname}"
     vgcreate ${vgname} /dev/cciss/c0d1
+    echo;echo "${date} ${me} Create logical volume ${logvol} within volumegroup ${vgname}"
     lvcreate -l${size} -n ${lvname} ${vgname}
+    echo;echo "${date} ${me} Make /dev/${vgname}/${lvname} a ${fs} filesystem"
     mkfs -t ${fs} -L ${lvname} /dev/${vgname}/${lvname}
     echo -e "LABEL=${lvname}\t${mp}\t${fs}\t${fsopts}" >>/tmp/fai/fstab
 #    [ -d /target/${mp} ] || mkdir -p /target/${mp}
 #    mount /dev/${vgname}/${lvname} /target/${mp}
  
     mirror_drives=$(awk '/bay [3-7]/ {printf $2",";}; END{print ;}' ${init_array_cfg_simple}|sed -e 's/,$//g')
+    echo;echo "${date} ${me} Creating a raid 6 array using disks ${mirror_drives}"
     hpacucli ctrl slot=${array_slot} create type=ld drives=${mirror_drives} raid=6 ss=256 sectors=32 aa=enable
+    echo;echo "${date} ${me} The whole disk will be a physical volume"
     pvcreate -Z y --metadatasize 256k --dataalignmentoffset 0 --dataalignment 1024k /dev/cciss/c0d2
     vgname=vg_my_data; lvname=lv_my_data; mp=/srv/mysql; size="90%vg"; fs=xfs; fsopts="rw,noatime,largeio 0 2"
+    echo;echo "${date} ${me} And on top of that we make a volumegroup ${vgname}"
     vgcreate ${vgname} /dev/cciss/c0d2
+    echo;echo "${date} ${me} Create logical volume ${logvol} within volumegroup ${vgname}"
     lvcreate -l${size} -n ${lvname} ${vgname}
+    echo;echo "${date} ${me} Make /dev/${vgname}/${lvname} a ${fs} filesystem"
     mkfs -t ${fs} -L ${lvname} /dev/${vgname}/${lvname}
     echo -e "LABEL=${lvname}\t${mp}\t${fs}\t${fsopts}" >>/tmp/fai/fstab
 #    [ -d /target/${mp} ] || mkdir -p /target/${mp}
 #    mount /dev/${vgname}/${lvname} /target/${mp}
 
     mirror_drives=$(awk '/bay 2/ {printf $2",";}; END{print ;}' ${init_array_cfg_simple}|sed -e 's/,$//g')
+    echo;echo "${date} ${me} Creating a raid 1 array using disks ${mirror_drives}"
     hpacucli ctrl slot=${array_slot} create type=ld drives=${mirror_drives} raid=1 ss=256 sectors=32 aa=enable
+    echo;echo "${date} ${me} The whole disk will be a physical volume"
     pvcreate -Z y --metadatasize 256k --dataalignmentoffset 0 --dataalignment 1024k /dev/cciss/c0d3
     vgname=vg_my_log; lvname=lv_my_log; mp=/srv/mysqllog; size="100%vg"; fs=xfs; fsopts="rw,noatime,largeio 0 2"
+    echo;echo "${date} ${me} And on top of that we make a volumegroup ${vgname}"
     vgcreate ${vgname} /dev/cciss/c0d3
+    echo;echo "${date} ${me} Create logical volume ${logvol} within volumegroup ${vgname}"
     lvcreate -l${size} -n ${lvname} ${vgname}
+    echo;echo "${date} ${me} Make /dev/${vgname}/${lvname} a ${fs} filesystem"
     mkfs -t ${fs} -L ${lvname} /dev/${vgname}/${lvname}
     echo -e "LABEL=${lvname}\t${mp}\t${fs}\t${fsopts}" >>/tmp/fai/fstab
 #    [ -d /target/${mp} ] || mkdir -p /target/${mp}
@@ -141,4 +194,13 @@ esac
 #touch $LOGDIR/skip.partition
 skiptask partition
 
+
+echo;echo "${date} ${me} PV's:"
+pvs
+echo;echo "${date} ${me} VG's:"
+vgs
+echo;echo "${date} ${me} LV's:"
+lvs
+
+echo;echo "${date} ${me} Finished";echo
 # END
