@@ -13,6 +13,7 @@
 date=$(date +%Y%m%d)
 me=$(basename $0)
 mydir=$(dirname $0)
+hn=$(hostname)
 
 
 # FUNCTIONS
@@ -28,7 +29,7 @@ die () {
 }
 
 comment () {
-  echo; echo "${date} ${me} $1"
+  echo; echo "$(date) ${me}@${hn} $1"
 }
 
 make_os_drives () {
