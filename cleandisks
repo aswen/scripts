@@ -57,7 +57,7 @@ case $ans in
   y|Y|yes|YES)
     lvs|awk '/lv_/ {print $1" "$2}'|while read lv vg;do
       mp=$(mount |grep "${lv}"|awk '{print $3}')
-      [ -n "${mp}" -a -d "${mp}" ] && umount ${mp}|| echo this is weird
+      [ -n "${mp}" -a -d "${mp}" ] && umount -l ${mp}|| echo this is weird
       lvremove -f /dev/${vg}/${lv}
     done
     umount -l /target
