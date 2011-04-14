@@ -33,6 +33,10 @@ comment () {
   echo; echo "$(date) ${me}@${hn} $1"
 }
 
+init_array_cfg=/tmp/fai/init_array_cfg
+init_array_cfg_simple=/tmp/fai/init_array_cfg_simple
+array_slot=$(hpacucli ctrl all show|awk '/Smart Array/ {print $6}')
+
 comment "Two disk boxes found on HP Array controller in slot ${array_slot}. This must be a database server..."
 mirror_drives=$(awk '/bay 1/ {printf $2",";}; END{print ;}' ${init_array_cfg_simple}|sed -e 's/,$//g')
 comment "Creating a raid 1 array using disks ${mirror_drives}"

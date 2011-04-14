@@ -33,6 +33,10 @@ comment () {
   echo; echo "$(date) ${me}@${hn} $1"
 }
 
+init_array_cfg=/tmp/fai/init_array_cfg
+init_array_cfg_simple=/tmp/fai/init_array_cfg_simple
+array_slot=$(hpacucli ctrl all show|awk '/Smart Array/ {print $6}')
+
 comment "One disk box found on HP Array controller in slot ${array_slot}. This must be an application server..."
 mirror_drives=$(grep -A10 unassigned ${init_array_cfg_simple}|grep physicaldrive|head -2|awk '{printf $2",";}; END{print ;}'|sed -e 's/,$//g')
 spare_drive=$(grep -A10 unassigned ${init_array_cfg_simple}|grep physicaldrive|tail -1|awk '{print $2}')
