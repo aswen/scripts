@@ -1,0 +1,301 @@
+#!/bin/bash
+# tt-post-install
+# This script takes care of all post install work
+
+# Alexander Swen
+# Private contact: alex@swen.nu, 023-5325777, 06-21811135
+
+# CHANGELOG:
+# 29-11-2006  A.Swen  created.
+# 17-07-2007  A.Swen  updated for different OS levels
+
+# TODO
+# make it a proper initscript
+
+# SETTINGS
+export date=$(date +%Y%m%d)
+export me=$(basename $0)
+export mydir=$(dirname $0)
+tmp_dir=${mydir}
+
+echo "==================== Configure Firewall ===================="
+
+# effe backup maken,
+[ -f /etc/default/iptables ] && cp /etc/default/iptables /etc/default/iptables-$(date +%Y%m%d)
+
+echo "Configure firewall"
+IPTABLES=/sbin/iptables
+IP6TABLES=/sbin/ip6tables
+DEPMOD=/sbin/depmod
+MODPROBE=/sbin/modprobe
+type=beheer
+INTERNAL_IF=eth0
+EXTERNAL_IF=eth3
+INTERNAL_IP=10.15.16.43
+INT_MASK=255.255.0.0
+INT_BROADCAST=10.15.255.255
+EXTERNAL_IP=192.168.1.123
+EXT_MASK=255.255.255.0
+EXT_BROADCAST=192.168.1.255
+
+service iptables stop
+
+$DEPMOD -a
+echo unloading fw modules
+$MODPROBE -r ipt_recent
+$MODPROBE -r ipt_REJECT
+$MODPROBE -r ipt_LOG
+$MODPROBE -r ipt_state
+$MODPROBE -r ipt_limit
+$MODPROBE -r ip_conntrack_ftp
+$MODPROBE -r iptable_mangle
+$MODPROBE -r iptable_filter
+$MODPROBE -r ip_conntrack
+$MODPROBE -r ip_tables
+
+echo loading fw modules
+$MODPROBE ip_tables
+$MODPROBE ip_conntrack
+$MODPROBE iptable_filter
+$MODPROBE iptable_mangle
+$MODPROBE ip_conntrack_ftp
+$MODPROBE ipt_limit
+$MODPROBE ipt_state
+$MODPROBE ipt_LOG
+$MODPROBE ipt_REJECT
+[ "$(grep ip_list_tot /etc/modprobe.conf)" ] || echo "options ipt_recent ip_list_tot=1000" >> /etc/modprobe.conf
+$MODPROBE ipt_recent
+
+echo flush all
+$IPTABLES -F
+echo set policies
+# standaard policies
+[ "$($IPTABLES -nL|awk '/Chain/ && /RH-Firewall-1-INPUT/ {print $2}')" = "RH-Firewall-1-INPUT" ] && $IPTABLES -X RH-Firewall-1-INPUT
+$IPTABLES -P FORWARD DROP
+$IPTABLES -P INPUT DROP
+$IPTABLES -P OUTPUT ACCEPT
+[ "$($IPTABLES -nL|awk '/Chain/ && /BRUTE-FORCE/ {print $2}')" = "BRUTE-FORCE" ] || $IPTABLES -N BRUTE-FORCE
+[ "$($IPTABLES -nL|awk '/Chain/ && /DDOS/ {print $2}')" = "DDOS" ] || $IPTABLES -N DDOS
+
+#ip6 hebben we niet
+$IP6TABLES -P INPUT DROP
+
+# loopback mag wel
+$IPTABLES -A INPUT -i lo -j ACCEPT
+
+echo validate source and dest
+# Source and Destination Address Sanity Checks
+# Drop packets from networks covered in RFC 1918 (private nets)
+# Drop packets from external interface IP
+[ "$($IPTABLES -nL|awk '/Chain/ && /VALID-SRC/ {print $2}')" = "VALID-SRC" ] || $IPTABLES -N VALID-SRC
+[ "$($IPTABLES -nL|awk '/Chain/ && /VALID-DST/ {print $2}')" = "VALID-DST" ] || $IPTABLES -N VALID-DST
+echo inp/outp naar valid
+$IPTABLES -A INPUT   -i ${INTERNAL_IF} -j VALID-SRC
+$IPTABLES -A OUTPUT  -o ${INTERNAL_IF} -j VALID-DST
+# forward gebruiken we niet
+$IPTABLES -A FORWARD -i ${EXTERNAL_IF} -j VALID-SRC
+$IPTABLES -A FORWARD -o ${INTERNAL_IF} -j VALID-DST
+
+# wij laten 10.0.0.0/8 wel toe.
+#$IPTABLES -A VALID-SRC -s 10.0.0.0/8 -m recent --set -j DROP
+$IPTABLES -A VALID-SRC -s 172.16.0.0/12 -m recent --set -j DROP
+# wij laten 192.168.0.0/16 wel toe.
+#$IPTABLES -A VALID-SRC -s 192.168.0.0/16 -m recent --set -j DROP
+$IPTABLES -A VALID-SRC -s 224.0.0.0/4 -m recent --set -j DROP
+$IPTABLES -A VALID-SRC -s 240.0.0.0/5 -m recent --set -j DROP
+$IPTABLES -A VALID-SRC -s 127.0.0.0/8 -m recent --set -j DROP
+$IPTABLES -A VALID-SRC -d 127.0.0.0/8 -m recent --set -j DROP
+$IPTABLES -A VALID-SRC -s 0.0.0.0/8 -m recent --set -j DROP
+$IPTABLES -A VALID-SRC -d 255.255.255.255 -m recent --set -j DROP
+$IPTABLES -A VALID-SRC -s 169.254.0.0/16 -m recent --set -j DROP
+#$IPTABLES -A VALID-SRC -s ${INTERNAL_IP} -m limit --limit 1/minute -j LOG --log-level 4 --log-prefix "INVALLID SOURCE "
+#$IPTABLES -A VALID-SRC -s ${INTERNAL_IP} -m recent --set -j DROP
+$IPTABLES -A VALID-DST -d 224.0.0.0/4 -m recent --set -j DROP
+
+echo only syn
+# beste eerst bogus syns droppen, bestaande sessies wel accepteren
+$IPTABLES -A INPUT -p TCP ! --syn -m state --state NEW -m recent --set -j DROP
+$IPTABLES -A INPUT -p ALL -m state --state ESTABLISHED,RELATED -j ACCEPT
+#$IPTABLES -A INPUT -p ALL -m recent --rcheck --seconds 60 -m limit --limit 1/minute -j LOG --log-prefix "NOT ESTABLISHED " --log-level 4
+#$IPTABLES -A INPUT -p ALL -m recent --rcheck --seconds 60 -j DROP
+
+echo icmp allow
+# relevante icmp wel binnen laten....
+icmptypes="3 8 11 12"
+for icmptype in ${icmptypes};do
+  $IPTABLES -A INPUT -p ICMP -s 0/0 --icmp-type ${icmptype} -j ACCEPT
+done
+
+allow_ftp_server () {
+  $IPTABLES -A BRUTE-FORCE -m recent --update --seconds 60 --hitcount 4 --rttl --name FTP -m limit --limit 1/minute -j LOG --log-level 4 --log-prefix "BRUTE-FORCE-FTP "
+  $IPTABLES -A BRUTE-FORCE -m recent --rcheck --seconds 60 --hitcount 4 --rttl --name FTP -j DROP
+  $IPTABLES -A BRUTE-FORCE -m recent --rcheck --rttl --name FTP -j ACCEPT
+  $IPTABLES -A INPUT -s 0/0 -p tcp --dport 21 -m state --state NEW -m recent --set --name FTP -j BRUTE-FORCE
+}
+
+allow_ssh_server () {
+  if [ -z "$1" ];then
+    port=22
+    $IPTABLES -A BRUTE-FORCE -m recent --update --seconds 60 --hitcount 10 --rttl --name SSH -m limit --limit 1/minute -j LOG --log-level 4 --log-prefix "BRUTE-FORCE-SSH "
+    $IPTABLES -A BRUTE-FORCE -m recent --rcheck --seconds 60 --hitcount 10 --rttl --name SSH -j DROP
+    $IPTABLES -A BRUTE-FORCE -m recent --rcheck --rttl --name SSH -j ACCEPT
+  else
+    port=${1}
+  fi
+  $IPTABLES -A INPUT -p tcp --dport ${port} -m state --state NEW -m recent --set --name SSH -j BRUTE-FORCE
+}
+
+allow_vmware_server () {
+  $IPTABLES -A BRUTE-FORCE -m recent --update --seconds 60 --hitcount 4 --rttl --name VMWARE-SERVER -m limit --limit 1/minute -j LOG --log-level 4 --log-prefix "BRUTE-FORCE-VMWARE-SERVER "
+  $IPTABLES -A BRUTE-FORCE -m recent --rcheck --seconds 60 --hitcount 4 --rttl --name VMWARE-SERVER -j DROP
+  $IPTABLES -A BRUTE-FORCE -m recent --rcheck --rttl --name VMWARE-SERVER -j ACCEPT
+  $IPTABLES -A INPUT -s 0/0 -p tcp --dport 902 -m state --state NEW -m recent --set --name VMWARE-SERVER -j BRUTE-FORCE
+  $IPTABLES -A INPUT -s 0/0 -p tcp --dport 904 -m state --state NEW -m recent --set --name VMWARE-SERVER -j BRUTE-FORCE
+}
+
+allow_dns_server () {
+  $IPTABLES -A DDOS -m recent --update --seconds 10 --hitcount 100 --rttl --name DNS -m limit --limit 1/minute -j LOG --log-level 4 --log-prefix "DDOS-DNS "
+  $IPTABLES -A DDOS -m recent --rcheck --seconds 10 --hitcount 100 --rttl --name DNS -j DROP
+  $IPTABLES -A DDOS -m recent --rcheck --rttl --name DNS -j ACCEPT
+  $IPTABLES -A INPUT -s 0/0 -p udp --dport 53 -m state --state NEW -m recent --set --name DNS -j DDOS
+  $IPTABLES -A INPUT -s 0/0 -p tcp --dport 53 -m state --state NEW -m recent --set --name DNS -j DDOS
+}
+
+allow_kvm_clients () {
+  $IPTABLES -A FORWARD -m physdev --physdev-is-bridged -j ACCEPT
+}
+allow_web_server () {
+  webserverports="80 443 8080 8443"
+  for port in ${webserverports};do
+    $IPTABLES -A INPUT -s 0/0 -p tcp --dport ${port} -j ACCEPT
+  done
+}
+
+allow_smtp_server () {
+  $IPTABLES -A DDOS -m recent --update --seconds 10 --hitcount 4 --rttl --name SMTP -m limit --limit 1/minute -j LOG --log-level 4 --log-prefix "DDOS-SMTP "
+  $IPTABLES -A DDOS -m recent --rcheck --seconds 10 --hitcount 4 --rttl --name SMTP -j DROP
+  $IPTABLES -A DDOS -m recent --rcheck --rttl --name SMTP -j ACCEPT
+  $IPTABLES -A INPUT -s 0/0 -p tcp --dport 25 -m state --state NEW -m recent --set --name SMTP -j DDOS
+}
+
+allow_dhcp_server () {
+  $IPTABLES -A INPUT -p udp -s 0/0 --sport 68 --dport 67 -j ACCEPT
+  $IPTABLES -A INPUT -p tcp -s 0/0 --sport 68 --dport 67 -j ACCEPT
+}
+
+allow_tftp_server () {
+  $IPTABLES -A INPUT -s 0/0 -p udp --dport 69 -j ACCEPT
+  $IPTABLES -A INPUT -s 0/0 -p tcp --dport 69 -j ACCEPT
+}
+
+allow_iscsi_targetd () {
+  $IPTABLES -A INPUT -s 0/0 -d ${br4_ip} -p tcp --dport 3260 -j ACCEPT
+  $IPTABLES -A INPUT -s 10.107.119.8 -p tcp --dport 3260 -j ACCEPT
+  $IPTABLES -A INPUT -s 10.107.119.10 -p tcp --dport 3260 -j ACCEPT
+}
+
+allow_smb_server () {
+  $IPTABLES -A INPUT -s 0/0 -p udp --dport 137 -j ACCEPT
+  $IPTABLES -A INPUT -s 0/0 -p udp --dport 138 -j ACCEPT
+  $IPTABLES -A INPUT -s 0/0 -p tcp --dport 139 -j ACCEPT
+  $IPTABLES -A INPUT -s 0/0 -p tcp --dport 445 -j ACCEPT
+}
+
+allow_nfs_server () {
+  nfsports="111 2049 40000:40004"
+  for port in ${nfsports};do
+    $IPTABLES -A INPUT -s 0/0 -p tcp --dport ${port} -j ACCEPT
+    $IPTABLES -A INPUT -s 0/0 -p udp --dport ${port} -j ACCEPT
+  done
+}
+
+allow_intel_raid_webserver () {
+  $IPTABLES -A INPUT -s 0/0 -p tcp --dport 3570 -j ACCEPT
+  $IPTABLES -A INPUT -s 0/0 -p udp --dport 3570 -j ACCEPT
+  $IPTABLES -A INPUT -s 0/0 -p tcp --dport 3571 -j ACCEPT
+  $IPTABLES -A INPUT -s 0/0 -p udp --dport 3571 -j ACCEPT
+  $IPTABLES -A INPUT -s 0/0 -p tcp --dport 42373 -j ACCEPT
+  $IPTABLES -A INPUT -s 0/0 -p udp --dport 42373 -j ACCEPT
+}
+
+allow_ip_forward () {
+  $IPTABLES -F -t nat
+  echo 1 > /proc/sys/net/ipv4/ip_forward
+  perl -pi -e 's/net.ipv4.ip_forward.*/net.ipv4.ip_forward = 1/g' /etc/sysctl.conf
+  $MODPROBE iptable_nat
+  $MODPROBE ip_nat_ftp
+  $IPTABLES -t nat -A POSTROUTING -o ${EXTERNAL_IF} -j MASQUERADE
+  $IPTABLES -A FORWARD -i ${EXTERNAL_IF} -o ${INTERNAL_IF} -m state --state ESTABLISHED,RELATED -j ACCEPT
+  $IPTABLES -A FORWARD -i ${INTERNAL_IF} -o ${EXTERNAL_IF} -j ACCEPT
+}
+
+echo snmp rules
+$IPTABLES -A INPUT -p udp --dport 161 -j ACCEPT
+$IPTABLES -A INPUT -p tcp --dport 161 -j ACCEPT
+$IPTABLES -A INPUT -p udp --dport 199 -j ACCEPT
+$IPTABLES -A INPUT -p tcp --dport 199 -j ACCEPT
+
+allow_ssh_server
+
+echo service specific
+# Type specific services
+case ${type} in
+  beheer)
+    allow_ip_forward;;
+  dhcp) allow_dhcp_server ;;
+  inst)
+    allow_dhcp_server
+    allow_tftp_server
+    allow_web_server
+  ;;
+  web) allow_web_server ;;
+  web-sha)
+    allow_web_server
+    allow_ssh_server 2280
+  ;;
+  dns) allow_dns_server ;;
+  ftp) allow_ftp_server ;;
+  mail) allow_smtp_server ;;
+  file)
+    echo allow_kvm_clients
+    allow_kvm_clients
+    echo allow_ftp_server
+    allow_ftp_server
+    echo allow_web_server
+    allow_web_server
+    echo allow_smb_server
+    allow_smb_server
+    echo allow_dhcp_server
+    allow_dhcp_server
+    echo allow_nfs_server
+    allow_nfs_server
+    echo allow_tftp_server
+    allow_tftp_server
+    echo allow_vmware_server
+    allow_vmware_server
+    echo allow_iscsi_targetd
+    allow_iscsi_targetd
+    echo allow_ssh_server 4022
+    allow_ssh_server 4022
+    echo allow_intel_raid_webserver
+    allow_intel_raid_webserver
+  ;;
+  kvm)
+    allow_kvm_clients
+  ;;
+esac
+
+echo log rules
+$IPTABLES -t mangle -A PREROUTING -p tcp --tcp-flags ALL FIN,URG,PSH -m limit --limit 5/minute -j LOG --log-level 4 --log-prefix "NMAP-XMAS SCAN:" --log-tcp-options --log-ip-options
+$IPTABLES -t mangle -A PREROUTING -p tcp --tcp-flags SYN,RST SYN,RST -m limit --limit 5/minute -j LOG --log-level 4 --log-prefix "SYN/RST SCAN:" --log-tcp-options --log-ip-options
+$IPTABLES -t mangle -A PREROUTING -p tcp --tcp-flags SYN,FIN SYN,FIN -m limit --limit 5/minute -j LOG --log-level 4 --log-prefix "SYN/FIN SCAN:" --log-tcp-options --log-ip-options
+#$IPTABLES -A INPUT -m limit --limit 5/minute ! -d ${INT_BROADCAST} -p udp ! --sport 137 ! --dport 137 -j LOG --log-level 4 --log-prefix "rejected: "
+$IPTABLES -A INPUT -p udp -j REJECT --reject-with icmp-port-unreachable
+#$IPTABLES -A INPUT -m limit --limit 5/minute ! -d ${INT_BROADCAST} ! -p udp -j LOG --log-level 4 --log-prefix "rejected: "
+$IPTABLES -A INPUT -p tcp -j REJECT --reject-with tcp-reset
+
+# nieuwe regels opslaan
+/sbin/iptables-save > /etc/sysconfig/iptables
+
+/etc/init.d/iptables restart
+
