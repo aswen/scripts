@@ -3,7 +3,7 @@
 # <WHAT DOES THIS SCRIPT DO?>
 
 # Alexander Swen
-# Private contact: alex@swen.nu, 023-5325777, 06-21811135
+# Private contact: alex@swen.nu, 06-21811135
 
 # CHANGELOG:
 # <DATE>	A.Swen	created.
@@ -50,5 +50,6 @@ get_options () {
 
 # SCRIPT
 [ ${UID} -gt 0 ] && die 0 only root may do that
+# get_options $@
 
 # END
