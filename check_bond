@@ -1,0 +1,90 @@
+# Script to check eth interfaces bond0
+# L.Gill 10/08/06 - V.1.0
+# ------------------------------------------
+# ########  Script Modifications  ##########
+# ------------------------------------------
+# Who    When      What
+# ---    ----      ----
+# LGill  ??	Add support for second bond module ie bond1
+#
+#
+#!/bin/bash
+USAGE="`basename $0`"
+NOTE=`/bin/echo -e "This script currently only supports 1 Bond module (will be 2 asap)"`
+NOTFOUND=`/bin/echo -e "There are no bonded interfaces detected."`
+LINUXONLY=`/bin/echo -e "This script was written for Linux RedHat.  If you are using another UNIX distribution you may need to edit the code.\n"`
+STATE_OK=0
+STATE_WARNING=1
+STATE_CRITICAL=2
+STATE_UNKNOWN=3
+#
+# temporary files
+BONDTMP=/tmp/bond.tmp
+ETHLIST=/tmp/ethlist.tmp
+ETHS=/tmp/eths.tmp
+ETHDOWN=/tmp/ethdown.tmp
+#
+# commands
+CAT=/bin/cat
+GREP=/bin/grep
+EGREP=/bin/egrep
+AWK=/usr/bin/gawk
+FIND=/usr/bin/find
+SED=/bin/sed
+WC=/usr/bin/wc
+TAIL=/usr/bin/tail
+ECHO=/bin/echo
+LS=/bin/ls
+TR=/usr/bin/tr
+#
+# emtpy temp files
+$CAT /dev/null > $BONDTMP
+$CAT /dev/null > $ETHLIST
+$CAT /dev/null > $ETHS
+$CAT /dev/null > $ETHDOWN
+#
+# Print usage
+if [[ $# -ne 0 ]]
+then
+        echo -e "\n\nWrong Syntax: `basename $0` $*\n\n"
+        echo -e "Usage: $USAGE\n\n"
+        echo -e "Note: $NOTE\n\n"
+        exit 0
+fi
+#
+# count bond interfaces
+COUNTBONDS=`$FIND /proc/net -name bonding -exec $LS {} \;| $WC -l`
+if [[ "$COUNTBONDS" -lt 1 ]]
+        then
+                $ECHO -e "\n\n$NOTFOUND\n\n$LINUXONLY\n\nNote: $NOTE\n\n"
+                exit 3
+fi
+# verify bond count are actual bond modules
+$FIND /proc/net -name bonding -exec $LS {} \; > $BONDTMP
+BOND0TRUE=`$GREP bond0 $BONDTMP`
+#BOND1TRUE=`$GREP bond1 $BONDTMP`
+if [[ "$COUNTBONDS" -eq 1 ]]
+   then
+        if [[ "$BOND0TRUE" ]]
+        then
+            BONDMODE=`$CAT /proc/net/bonding/bond0 |$GREP "Bonding Mode"|$AWK {'print $3$4$5'}`
+            $CAT /proc/net/bonding/bond0 |$GREP eth|$AWK {'print $3'}|$EGREP -v "Slave|Master|Interface|Active" > $ETHLIST
+	    $CAT $ETHLIST| while read list
+	      do
+              	$CAT /proc/net/bonding/bond0|$GREP -A 1 "$list"|$AWK {'print $3'}|$SED 's/Slave/Bond/'|$TR "\n" " " >> $ETHS
+		$CAT $ETHS |$GREP down >> $ETHDOWN
+	      done
+	    TESTSTATE=`grep down $ETHDOWN|wc -l`
+                  if [[ "$TESTSTATE" -gt 0 ]]
+                     then
+                        $ECHO -n "CRITICAL - Bonding Mode: $BONDMODE. "
+                        $CAT $ETHDOWN|$TAIL -1
+                        exit 2
+                     else
+                        $ECHO -n "OK - Bonding Mode: $BONDMODE. "
+                        $CAT $ETHS
+                        exit
+                  fi
+
+        fi
+fi
