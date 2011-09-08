@@ -1,3 +1,4 @@
+#!/bin/bash
 # Script to check eth interfaces bonding
 # L.Gill 10/08/06 - V.1.0
 # A.Swen 11/09/07 - V.1.1
@@ -9,18 +10,7 @@
 # A.Swen 2011-09-07	Add support for other bond module than bond0 (defaults to bond0 however)
 #
 #
-#!/bin/bash
 # SETTINGS
-NOTFOUND="There are no bonded interfaces detected."
-LINUXONLY="This script was written for Linux RedHat. If you are using another UNIX distribution you may need to edit the code."
-
-# temporary files
-# changed to mktemp to support multiple nagios servers
-BONDTMP=$(mktemp)
-ETHLIST=$(mktemp)
-ETHS=$(mktemp)
-ETHDOWN=$(mktemp)
-
 # Defautl if is bond0
 if=bond0
 
@@ -81,20 +71,14 @@ done
 }
 
 result () {
-  STATE_OK=0
-  STATE_WARNING=1
-  STATE_CRITICAL=2
-  STATE_UNKNOWN=3
   case $1 in
-    1)
-      echo "plugin error"
-      cleanup
-      exit 1 ;;
-    2)
-      echo "bonding module not loaded"
-      cleanup
-      exit 2 ;;
+    0) echo "OK: - Bondingmode: $(grep "Bonding Mode:" /proc/net/bonding/${if})" ;;
+    1) echo "UNKNOWN: plugin error" ;;
+    2) echo "WARNING: bonding module not loaded" ;;
+    3) echo "WARNING: state of ${if} device $2 is $3" ;;
   esac
+  cleanup
+  exit $1
 }
 
 # SCRIPT
@@ -104,10 +88,17 @@ result () {
 # 1st we check if bonding module is loaded
 [ "$(${LSMOD}|grep bonding)" = "" ] && result 2
 
+# test state of each if in bond
+${GREP} "Slave Interface" /proc/net/bonding/${if} |awk '{print $3}'|while read ethdev;do
+  state=$(grep -A1 "Slave Interface: ${ethdev}" /proc/net/bonding/bond0|tail -1|awk '{print $3}')
+  [ "${state}" = "up" ]||result 3 ${ethdev} ${state}
+done
 
+# if we make it here we're ok
+result 0
 
 #
-# count bond interfaces
+eplugin error count bond interfaces
 COUNTBONDS=`$FIND /proc/net -name bonding -exec $LS {} \;| $WC -l`
 if [[ "$COUNTBONDS" -lt 1 ]];then
   $ECHO -e "\n\n$NOTFOUND\n\n$LINUXONLY\n\nNote: $NOTE\n\n"
