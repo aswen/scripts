@@ -76,7 +76,7 @@ result () {
     1) echo "UNKNOWN: plugin error" ;;
     2) echo "WARNING: bonding module not loaded" ;;
     3) echo "WARNING: state of ${if} device $2 is $3" ;;
-    4) echo "WARNING: no bondinterface with name ${if} found" ;;
+    4) echo "UNKNOWN: no bondinterface with name ${if} found" ;;
   esac
   cleanup
   exit $1
