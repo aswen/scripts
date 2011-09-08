@@ -76,6 +76,7 @@ result () {
     1) echo "UNKNOWN: plugin error" ;;
     2) echo "WARNING: bonding module not loaded" ;;
     3) echo "WARNING: state of ${if} device $2 is $3" ;;
+    4) echo "WARNING: no bondinterface with name ${if} found" ;;
   esac
   cleanup
   exit $1
@@ -87,6 +88,9 @@ result () {
 
 # 1st we check if bonding module is loaded
 [ "$(${LSMOD}|grep bonding)" = "" ] && result 2
+
+# test if there is any bond interface with this name
+[ -f "/proc/net/bonding/${if}" ] || result 4
 
 # test state of each if in bond
 ${GREP} "Slave Interface" /proc/net/bonding/${if} |awk '{print $3}'|while read ethdev;do
