@@ -97,36 +97,4 @@ done
 # if we make it here we're ok
 result 0
 
-#
-eplugin error count bond interfaces
-COUNTBONDS=`$FIND /proc/net -name bonding -exec $LS {} \;| $WC -l`
-if [[ "$COUNTBONDS" -lt 1 ]];then
-  $ECHO -e "\n\n$NOTFOUND\n\n$LINUXONLY\n\nNote: $NOTE\n\n"
-  exit 3
-fi
-# verify bond count are actual bond modules
-$FIND /proc/net -name bonding -exec $LS {} \; > $BONDTMP
-BOND0TRUE=`$GREP ${if} $BONDTMP`
-#BOND1TRUE=`$GREP bond1 $BONDTMP`
-if [[ "$COUNTBONDS" -eq 1 ]];then
-  if [[ "$${if}TRUE" ]];then
-    BONDMODE=`$CAT /proc/net/bonding/${if} |$GREP "Bonding Mode"|$AWK {'print $3$4$5'}`
-    $CAT /proc/net/bonding/${if} |$GREP eth|$AWK {'print $3'}|$EGREP -v "Slave|Master|Interface|Active" > $ETHLIST
-	  $CAT $ETHLIST| while read list;do
-      $CAT /proc/net/bonding/${if}|$GREP -A 1 "$list"|$AWK {'print $3'}|$SED 's/Slave/Bond/'|$TR "\n" " " >> $ETHS
-		  $CAT $ETHS |$GREP down >> $ETHDOWN
-	  done
-	  TESTSTATE=`grep down $ETHDOWN|wc -l`
-    if [[ "$TESTSTATE" -gt 0 ]];then
-      $ECHO -n "CRITICAL - Bonding Mode: $BONDMODE. "
-      $CAT $ETHDOWN|$TAIL -1
-      exit 2
-    else
-      $ECHO -n "OK - Bonding Mode: $BONDMODE. "
-      $CAT $ETHS
-      exit
-    fi
-  fi
-fi
-
-
+#END
