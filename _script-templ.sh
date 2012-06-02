@@ -48,8 +48,31 @@ get_options () {
   done
 }
 
+duration () {
+  before=$1
+  after="$(date +%s)"
+  elapsed="$(expr $after - $before)"
+  hours=$(($elapsed / 3600))
+  elapsed=$(($elapsed - $hours * 3600))
+  minutes=$(($elapsed / 60))
+  seconds=$(($elapsed - $minutes * 60))
+  time_running="${hours}:${minutes}:${seconds}"
+}
+
+log_msg () {
+  duration ${before_total}
+  message="$1"
+  echo "${time_running} $1"|tee -a ${short_log}
+}
+
 # SCRIPT
+before_total="$(date +%s)"
 [ ${UID} -gt 0 ] && die 0 only root may do that
+log_msg "$(date) started ${me}"
 # get_options $@
 
+
+duration ${before_total}
+log_msg "Total time taken: ${hours}:${minutes}:${seconds}"
+log_msg "$(date) Backup finished"
 # END
