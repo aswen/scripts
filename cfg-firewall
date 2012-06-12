@@ -174,7 +174,7 @@ echo validate source and dest
 # wij laten 10.0.0.0/8 wel toe.
 #$IPTABLES -A VALID-SRC -s 10.0.0.0/8 -m recent --set -j DROP
 $IPTABLES -A VALID-SRC -s 172.16.0.0/12 -m recent --set -j DROP
-$IPTABLES -A VALID-SRC -s 192.168.0.0/16 -m recent --set -j DROP
+#$IPTABLES -A VALID-SRC -s 192.168.0.0/16 -m recent --set -j DROP
 $IPTABLES -A VALID-SRC -s 224.0.0.0/4 -m recent --set -j DROP
 $IPTABLES -A VALID-SRC -s 240.0.0.0/5 -m recent --set -j DROP
 $IPTABLES -A VALID-SRC -s 127.0.0.0/8 -m recent --set -j DROP
