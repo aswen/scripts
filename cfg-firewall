@@ -198,7 +198,7 @@ echo icmp allow
 # relevante icmp wel binnen laten....
 icmptypes="3 8 11 12"
 for icmptype in ${icmptypes};do
-  $IPTABLES -A INPUT -p ICMP -s ${INT_LAN} --icmp-type ${icmptype} -j ACCEPT
+  $IPTABLES -A INPUT -p ICMP --icmp-type ${icmptype} -j ACCEPT
 done
 
 allow_ssh_server () {
