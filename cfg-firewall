@@ -1,0 +1,297 @@
+#!/bin/bash
+
+# Alexander Swen
+# Private contact: alex@swen.nu, 023-5325777, 06-21811135
+
+# CHANGELOG:
+# 29-11-2006  A.Swen  created.
+# 19-04-2011  A.Swen  configures firewall for debian servers
+# 14-12-2011  A.Swen  configures firewall for moves servers
+# 22-12-2011  A.Swen  reworked a bit to keep open sessions open and added at job to stop iptables in 2 minutes
+#                     in case something goes wrong and the executer of the script loses connection...
+# 02-01-2012  A.Swen  added a fil2ban restart before iptables-save in order to get the fail2ban rules in the rulesfile
+
+# NOTES
+
+# SETTINGS
+export date=$(date +%Y%m%d)
+export me=$(basename $0)
+export mydir=$(dirname $0)
+tmp_dir=${mydir}
+rulesfile=/etc/iptables/rules
+
+
+# FUNCTIONS
+die () {
+  rc=$1
+  shift
+  echo "==========================">&2
+  echo "====    FATAL  ERROR  ====" >&2
+  echo "==========================">&2
+  echo "" >&2
+  echo $@ >&2
+  exit $rc
+}
+
+# SCRIPT
+[ ${UID} -gt 0 ] && die 0 only root may do that
+
+echo "==================== Configure Firewall ===================="
+
+# effe backup maken,
+[ -f "${rulesfile}" ] && cp "${rulesfile}" "${rulesfile}-$(date +%Y%m%d)"
+
+echo "Configure firewall"
+IPTABLES=/sbin/iptables
+IP6TABLES=/sbin/ip6tables
+DEPMOD=/sbin/depmod
+MODPROBE=/sbin/modprobe
+INTERNAL_IF=$(ip r|awk '/default via/ {print $5}')
+inetline="$(ip -f inet a s ${INTERNAL_IF}|awk '/inet / {print}')"
+INTERNAL_IP=$(echo ${inetline}|awk '{sub (/\/.*/ , ""); print $2}')
+netmask_bits=$(echo ${inetline}|awk '{sub (/.*\// , ""); print $1}')
+INT_BCAST=$(echo ${inetline}|awk '{print $4}')
+case ${netmask_bits} in
+  8) INT_MASK=255.0.0.0;INT_LAN=$(echo ${INTERNAL_IP}|awk -F. '{print $1".0.0.0"}')/${netmask_bits};;
+  16) INT_MASK=255.255.0.0;INT_LAN=$(echo ${INTERNAL_IP}|awk -F. '{print $1"."$2".0.0"}')/${netmask_bits};;
+  24) INT_MASK=255.255.255.0;INT_LAN=$(echo ${INTERNAL_IP}|awk -F. '{print $1"."$2"."$3".0"}')/${netmask_bits};;
+  *) echo "Niet standaard klasse netwerk gebruikt! zoek je netmask uit en voeg dat toe aan $0";;
+esac
+mygw=$(ip r|awk '/default/ {print $3}')
+
+# Samenvatting
+cat << EOF
+
+eerst maar eens samenvatting wat ik tot nu toe gevonden heb:
+
+mijn IF = ${INTERNAL_IF}
+mijn IP = ${INTERNAL_IP}
+mijn GW = ${mygw}
+
+EOF
+
+# Maak de dir waarin de cfg moet
+[ -d /etc/iptables ] || install -dm 770 -o root -g root /etc/iptables
+# Maak init script
+cat << EOF > /etc/init.d/iptables
+#!/bin/bash
+# originaly written by Simon Richter <sjr@debian.org>
+# 2011-04-19 changed by A.Swen to work better with rules etc
+#
+### BEGIN INIT INFO
+# Provides:          iptables
+# Required-Start:    mountkernfs \$local_fs
+# Required-Stop:     \$local_fs
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Set up iptables rules
+### END INIT INFO
+
+IPTABLES=/sbin/iptables
+IPTABLESRESTORE=/sbin/iptables-restore
+IP6TABLES=/sbin/ip6tables
+DEPMOD=/sbin/depmod
+MODPROBE=/sbin/modprobe
+
+rulesfile=/etc/iptables/rules
+
+[ \${UID} -gt 0 ] && echo only root may do that && exit 1
+
+case "\${1}" in
+  start)
+    \${DEPMOD} -a
+    \${MODPROBE} ip_tables
+    \${MODPROBE} ip_conntrack
+    \${MODPROBE} iptable_filter
+    \${MODPROBE} iptable_mangle
+    \${MODPROBE} ip_conntrack_ftp
+    \${MODPROBE} ipt_limit
+    \${MODPROBE} ipt_state
+    \${MODPROBE} ipt_LOG
+    \${MODPROBE} ipt_REJECT
+    [ -f \${rulesfile} ] && \${IPTABLESRESTORE} <\${rulesfile}
+  ;;  
+  stop)
+    \${IPTABLES} -P FORWARD ACCEPT
+    \${IPTABLES} -P INPUT ACCEPT
+    \${IPTABLES} -P OUTPUT ACCEPT
+    for table in filter nat mangle raw;do \${IPTABLES} -t \${table} -F;done
+  ;;  
+  restart)
+    \$0 stop
+    \$0 start
+  ;;  
+  status)
+    for table in filter nat mangle raw;do echo table \${table};\${IPTABLES} -t \${table} -nL;echo;done
+  ;;
+  *)
+    echo "Usage: \${0} {start|stop|restart|status}" >&2
+    exit 1
+  ;;
+esac
+
+exit 0
+EOF
+# installeer het init script
+chmod +x /etc/init.d/iptables
+update-rc.d iptables defaults
+
+echo controlleer initscript:
+ls -la /etc/init.d/iptables
+find /etc/rc?.d -name \*iptables
+
+echo "stopping iptables"
+/etc/init.d/iptables stop
+
+echo loading fw modules
+$MODPROBE ip_tables
+$MODPROBE ip_conntrack
+$MODPROBE iptable_filter
+$MODPROBE iptable_mangle
+$MODPROBE ip_conntrack_ftp
+$MODPROBE ipt_limit
+$MODPROBE ipt_state
+$MODPROBE ipt_LOG
+$MODPROBE ipt_REJECT
+
+echo set policies
+# standaard policies (input gaat pas na related accept op drop)
+$IPTABLES -P FORWARD DROP
+$IPTABLES -P OUTPUT ACCEPT
+
+#ip6 hebben we nog niet
+$IP6TABLES -P INPUT DROP
+
+# loopback mag wel
+$IPTABLES -A INPUT -i lo -j ACCEPT
+
+echo validate source and dest
+# Source and Destination Address Sanity Checks
+# Drop packets from networks covered in RFC 1918 (private nets)
+[ "$($IPTABLES -nL|awk '/Chain/ && /VALID-SRC/ {print $2}')" = "VALID-SRC" ] || $IPTABLES -N VALID-SRC
+[ "$($IPTABLES -nL|awk '/Chain/ && /VALID-DST/ {print $2}')" = "VALID-DST" ] || $IPTABLES -N VALID-DST
+
+# wij laten 10.0.0.0/8 wel toe.
+#$IPTABLES -A VALID-SRC -s 10.0.0.0/8 -m recent --set -j DROP
+$IPTABLES -A VALID-SRC -s 172.16.0.0/12 -m recent --set -j DROP
+$IPTABLES -A VALID-SRC -s 192.168.0.0/16 -m recent --set -j DROP
+$IPTABLES -A VALID-SRC -s 224.0.0.0/4 -m recent --set -j DROP
+$IPTABLES -A VALID-SRC -s 240.0.0.0/5 -m recent --set -j DROP
+$IPTABLES -A VALID-SRC -s 127.0.0.0/8 -m recent --set -j DROP
+$IPTABLES -A VALID-SRC -d 127.0.0.0/8 -m recent --set -j DROP
+$IPTABLES -A VALID-SRC -s 0.0.0.0/8 -m recent --set -j DROP
+$IPTABLES -A VALID-SRC -d 255.255.255.255 -m recent --set -j DROP
+$IPTABLES -A VALID-SRC -s 169.254.0.0/16 -m recent --set -j DROP
+$IPTABLES -A VALID-DST -d 224.0.0.0/4 -m recent --set -j DROP
+echo inp/outp naar valid
+$IPTABLES -A INPUT   -i eth1 -j VALID-SRC
+$IPTABLES -A OUTPUT  -o eth1 -j VALID-DST
+$IPTABLES -A INPUT   -i wlan2 -j VALID-SRC
+$IPTABLES -A OUTPUT  -o wlan2 -j VALID-DST
+
+echo accept nly syn
+# beste eerst bogus syns droppen, bestaande sessies wel accepteren
+$IPTABLES -A INPUT -p TCP ! --syn -m state --state NEW -m recent --set -j DROP
+$IPTABLES -A INPUT -p ALL -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+echo icmp allow
+# relevante icmp wel binnen laten....
+icmptypes="3 8 11 12"
+for icmptype in ${icmptypes};do
+  $IPTABLES -A INPUT -p ICMP -s ${INT_LAN} --icmp-type ${icmptype} -j ACCEPT
+done
+
+allow_ssh_server () {
+  if [ -z "$1" ];then
+    port=22
+  else
+    port=${1}
+  fi
+  $IPTABLES -A INPUT -s 0/0 -p tcp --dport ${port} -j ACCEPT
+}
+
+allow_web_server () {
+  webserverports="80 443"
+  for port in ${webserverports};do
+    echo allow web server port $port
+    $IPTABLES -A INPUT -p tcp --dport ${port} -j ACCEPT
+  done
+}
+
+allow_mysql_server () {
+  for src in ${nedap_allowed_servers} ${webservers} ${dbservers} ${db_masters};do 
+    echo allow mysql from $src
+    $IPTABLES -A INPUT -s ${src} -p tcp --dport 3306 -j ACCEPT
+  done
+}
+
+allow_syslogng_server () {
+  for src in ${webservers} ${dbservers};do 
+    echo allow syslog from $src
+    $IPTABLES -A INPUT -s ${src} -p tcp --dport 514 -j ACCEPT
+  done
+}
+
+allow_munin_server () {
+  for src in ${nedap_allowed_servers};do
+    echo allow munin from $src
+    $IPTABLES -A INPUT -s ${src} -p tcp --dport 4949 -j ACCEPT
+  done
+}
+
+allow_nagios_server () {
+  for src in ${nedap_allowed_servers};do
+    echo allow nagios from $src
+    $IPTABLES -A INPUT -s ${src} -p tcp --dport 5666 -j ACCEPT
+  done
+}
+
+allow_ssh_server
+#allow_nagios_server
+#allow_munin_server
+
+echo service specific
+# Type specific services
+case ${functie} in
+  dbr) allow_mysql_server;allow_syslogng_server ;;
+  db) allow_mysql_server ;;
+  web) allow_web_server ;;
+esac
+
+
+echo log rules
+$IPTABLES -t mangle -A PREROUTING -p tcp --tcp-flags ALL FIN,URG,PSH -m limit --limit 5/minute -j LOG --log-level 4 --log-prefix "NMAP-XMAS SCAN:" --log-tcp-options --log-ip-options
+$IPTABLES -t mangle -A PREROUTING -p tcp --tcp-flags SYN,RST SYN,RST -m limit --limit 5/minute -j LOG --log-level 4 --log-prefix "SYN/RST SCAN:" --log-tcp-options --log-ip-options
+$IPTABLES -t mangle -A PREROUTING -p tcp --tcp-flags SYN,FIN SYN,FIN -m limit --limit 5/minute -j LOG --log-level 4 --log-prefix "SYN/FIN SCAN:" --log-tcp-options --log-ip-options
+$IPTABLES -A INPUT -p udp -j REJECT --reject-with icmp-port-unreachable
+$IPTABLES -A INPUT -p tcp -j REJECT --reject-with tcp-reset
+$IPTABLES -P INPUT DROP
+
+# nieuwe regels opslaan
+# begin rules file warning
+cat << EOF > "${rulesfile}"
+# WARNING
+# This is a AUTOGENERATED file so do NOT edit.
+# edit $0 instead
+
+EOF
+
+echo "allow fail2ban to add it's rules before we save the rules:"
+/etc/init.d/fail2ban stop
+sleep 1
+/etc/init.d/fail2ban start
+sleep 1
+
+echo "saving rules to ${rulesfile}"
+/sbin/iptables-save >> ${rulesfile}
+
+echo "restarting iptables"
+/etc/init.d/iptables restart
+
+#echo "scheduling stop of iptables in 2 minutes to ensure system stays available"
+#echo "/etc/init.d/iptables stop"|at today + 2 minutes
+#
+#echo "here's the at queue:"
+#atq
+#echo
+#echo -e "use atrm <id> to remove the job if you are still connected.\nHowever, you can start iptables using /etc/init.d/iptables start if you're too late..."
