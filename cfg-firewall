@@ -180,7 +180,6 @@ $IPTABLES -A VALID-SRC -s 240.0.0.0/5 -m recent --set -j DROP
 $IPTABLES -A VALID-SRC -s 127.0.0.0/8 -m recent --set -j DROP
 $IPTABLES -A VALID-SRC -d 127.0.0.0/8 -m recent --set -j DROP
 $IPTABLES -A VALID-SRC -s 0.0.0.0/8 -m recent --set -j DROP
-$IPTABLES -A VALID-SRC -d 255.255.255.255 -m recent --set -j DROP
 $IPTABLES -A VALID-SRC -s 169.254.0.0/16 -m recent --set -j DROP
 $IPTABLES -A VALID-DST -d 224.0.0.0/4 -m recent --set -j DROP
 echo inp/outp naar valid
