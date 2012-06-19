@@ -183,10 +183,10 @@ $IPTABLES -A VALID-SRC -s 0.0.0.0/8 -m recent --set -j DROP
 $IPTABLES -A VALID-SRC -s 169.254.0.0/16 -m recent --set -j DROP
 $IPTABLES -A VALID-DST -d 224.0.0.0/4 -m recent --set -j DROP
 echo inp/outp naar valid
-$IPTABLES -A INPUT   -i eth1 -j VALID-SRC
-$IPTABLES -A OUTPUT  -o eth1 -j VALID-DST
-$IPTABLES -A INPUT   -i wlan2 -j VALID-SRC
-$IPTABLES -A OUTPUT  -o wlan2 -j VALID-DST
+#$IPTABLES -A INPUT   -i eth1 -j VALID-SRC
+#$IPTABLES -A OUTPUT  -o eth1 -j VALID-DST
+#$IPTABLES -A INPUT   -i wlan2 -j VALID-SRC
+#$IPTABLES -A OUTPUT  -o wlan2 -j VALID-DST
 
 echo accept nly syn
 # beste eerst bogus syns droppen, bestaande sessies wel accepteren
