@@ -74,5 +74,5 @@ log_msg "$(date) started ${me}"
 
 duration ${before_total}
 log_msg "Total time taken: ${hours}:${minutes}:${seconds}"
-log_msg "$(date) Backup finished"
+log_msg "$(date) finished"
 # END
