@@ -72,11 +72,8 @@ log_msg "$(date) started ${me}"
 # get_options $@
 
 # first flush address from eth0
-ip a f dev eth0
 brctl addbr br_lan
-brctl addif br_lan eth0
-dhclient br_lan
-ip a s br_lan
+brctl addif br_lan
 brctl addbr br_mhip
 brctl addbr br_ship
 brctl addbr br_sync
