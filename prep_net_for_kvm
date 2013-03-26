@@ -79,6 +79,7 @@ brctl addbr br_ship
 brctl addbr br_sync
 brctl show
 /etc/init.d/libvirt-bin start
+virsh net-start default
 
 
 duration ${before_total}
