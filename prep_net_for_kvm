@@ -72,13 +72,17 @@ log_msg "$(date) started ${me}"
 # get_options $@
 
 # first flush address from eth0
+echo "be aware that i will try to kill the openvpn to nedap"
+pkill -f nedap-zwolle
 brctl addbr br_lan
-brctl addif br_lan
+ip a a 10.120.1.2/16 dev br_lan
+ifconfig br_lan up
+#brctl addif br_lan
 brctl addbr br_mhip
 brctl addbr br_ship
 brctl addbr br_sync
 brctl show
-/etc/init.d/libvirt-bin start
+#/etc/init.d/libvirt-bin start
 
 
 duration ${before_total}
