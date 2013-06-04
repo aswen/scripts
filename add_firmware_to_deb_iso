@@ -19,6 +19,8 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 # Changelog:
+# 2013.06.04 - Add comment, wheezy as a suite and case statement
+               (Alexander Swen)
 # 2011.02.08 - Add support for initrd.img files (same as initrd.gz)
 #              (Andrew McGlashan)
 # 2009.02.17 - Add support for isolinux-based CD images,
@@ -80,6 +82,9 @@ initrd_append_fw() {
 
 if [ $# != 3 ]; then
   echo "Usage: add-firmware-to.sh <infile> <outfile> <suite>" >&2
+  echo "<infile>=the iso image you wish to enrich with firmwarez" >&2
+  echo "<outfile>=the iso image you wish to create" >&2
+  echo "<suite> squeeze, wheezy, etc" >&2
   exit 1
 fi
 
@@ -96,9 +101,10 @@ if [ -e "$outfile" ]; then
 fi
 
 suite="$3"
-if [ "$suite" != "lenny" ] && [ "$suite" != "squeeze" ]; then
-    echo "Unrecognized suite $suite, trying anyway." >&2
-fi
+case "$suite" in
+  lenny|squeeze|wheezy) echo "installing firmware into $suite" ;;
+  *) echo "Unrecognized suite $suite, trying anyway." >&2 ;;
+esac
 
 fwfile="$(mktemp)"
 if ! fetch_firmware "$fwfile" "$suite"; then
@@ -132,7 +138,7 @@ if is_iso "$file"; then
 
     chmod -R u+w "$buildtree"
     for i in $(find "$buildtree" -name "initrd.gz" -o -name "initrd.img"); do
-	initrd_append_fw "$i" "$fwfile" "$i"
+    	initrd_append_fw "$i" "$fwfile" "$i"
     done
     isolinuxpath="$(cd $buildtree && find . -name isolinux.bin | head -1 | cut -b 3-)"
     mkisofs -r -J -b "$isolinuxpath" -c boot.cat \
