@@ -20,7 +20,9 @@
 #
 # Changelog:
 # 2013.06.04 - Add comment, wheezy as a suite and case statement
-               (Alexander Swen)
+#            - Added a function to check if alle required programs are installed
+#              And searches for alternative to mkisofs (genisoimage)
+#              (Alexander Swen)
 # 2011.02.08 - Add support for initrd.img files (same as initrd.gz)
 #              (Andrew McGlashan)
 # 2009.02.17 - Add support for isolinux-based CD images,
