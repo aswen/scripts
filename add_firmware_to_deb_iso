@@ -69,7 +69,7 @@ initrd_append_fw() {
     tar xfz "$fwfile"
     mkdir x
     for file in *deb; do
-	dpkg-deb -x "$file" x
+	    dpkg-deb -x "$file" x
     done
 
     (cd x && find . | cpio -H newc -o) >> initrd
@@ -106,6 +106,26 @@ case "$suite" in
   *) echo "Unrecognized suite $suite, trying anyway." >&2 ;;
 esac
 
+# check some requirements
+if [ ! -x /usr/bin/wget ]; then
+  echo "wget wasn't found." >&2
+  exit 2
+fi
+
+if [ ! -x /usr/bin/mkisofs ]; then
+  echo "mkisofs wasn't found, let's see if there is genisoimage" >&2
+  if [ ! -x /usr/bin/genisoimage ]; then
+    echo "genisoimage wasn't found either. install at least one of them." >&2
+    exit 2
+  else
+    echo "genisoimage was found, will use that" >&2
+    export MKISOFS="/usr/bin/genisoimage"
+  fi
+else
+  export MKISOFS="/usr/bin/mkisofs"
+fi
+
+
 fwfile="$(mktemp)"
 if ! fetch_firmware "$fwfile" "$suite"; then
     echo "ERROR: Could not download firmware" >&2
@@ -141,7 +161,7 @@ if is_iso "$file"; then
     	initrd_append_fw "$i" "$fwfile" "$i"
     done
     isolinuxpath="$(cd $buildtree && find . -name isolinux.bin | head -1 | cut -b 3-)"
-    mkisofs -r -J -b "$isolinuxpath" -c boot.cat \
+    ${MKISOFS} -r -J -b "$isolinuxpath" -c boot.cat \
                 -no-emul-boot -boot-load-size 4 -boot-info-table \
                 -o "$outfile" "$buildtree"
     rm -rf "$isotmp"
