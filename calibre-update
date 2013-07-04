@@ -70,7 +70,7 @@ before_total="$(date +%s)"
 log_msg "$(date) started ${me}"
 # get_options $@
 
-sudo python -c "import sys; py3 = sys.version_info[0] > 2; u = __import__('urllib.request' if py3 else 'urllib', fromlist=1); exec(u.urlopen('http://status.calibre-ebook.com/linux_installer').read()); main()"
+sudo python -c "import sys; py3 = sys.version_info[0] > 2; u = __import__('urllib.request' if py3 else 'urllib', fromlist=1); exec(u.urlopen('http://status.calibre-ebook.com/linux_installer').read()); main(install_dir='/opt')"
 duration ${before_total}
 log_msg "Total time taken: ${hours}:${minutes}:${seconds}"
 log_msg "$(date) Backup finished"
