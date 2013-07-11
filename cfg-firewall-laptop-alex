@@ -10,6 +10,7 @@
 # 22-12-2011  A.Swen  reworked a bit to keep open sessions open and added at job to stop iptables in 2 minutes
 #                     in case something goes wrong and the executer of the script loses connection...
 # 02-01-2012  A.Swen  added a fil2ban restart before iptables-save in order to get the fail2ban rules in the rulesfile
+# 11-07-2013  A.Swen  modified for my laptop
 
 # NOTES
 
@@ -46,29 +47,6 @@ IPTABLES=/sbin/iptables
 IP6TABLES=/sbin/ip6tables
 DEPMOD=/sbin/depmod
 MODPROBE=/sbin/modprobe
-INTERNAL_IF=$(ip r|awk '/default via/ {print $5}')
-inetline="$(ip -f inet a s ${INTERNAL_IF}|awk '/inet / {print}')"
-INTERNAL_IP=$(echo ${inetline}|awk '{sub (/\/.*/ , ""); print $2}')
-netmask_bits=$(echo ${inetline}|awk '{sub (/.*\// , ""); print $1}')
-INT_BCAST=$(echo ${inetline}|awk '{print $4}')
-case ${netmask_bits} in
-  8) INT_MASK=255.0.0.0;INT_LAN=$(echo ${INTERNAL_IP}|awk -F. '{print $1".0.0.0"}')/${netmask_bits};;
-  16) INT_MASK=255.255.0.0;INT_LAN=$(echo ${INTERNAL_IP}|awk -F. '{print $1"."$2".0.0"}')/${netmask_bits};;
-  24) INT_MASK=255.255.255.0;INT_LAN=$(echo ${INTERNAL_IP}|awk -F. '{print $1"."$2"."$3".0"}')/${netmask_bits};;
-  *) echo "Niet standaard klasse netwerk gebruikt! zoek je netmask uit en voeg dat toe aan $0";;
-esac
-mygw=$(ip r|awk '/default/ {print $3}')
-
-# Samenvatting
-cat << EOF
-
-eerst maar eens samenvatting wat ik tot nu toe gevonden heb:
-
-mijn IF = ${INTERNAL_IF}
-mijn IP = ${INTERNAL_IP}
-mijn GW = ${mygw}
-
-EOF
 
 # Maak de dir waarin de cfg moet
 [ -d /etc/iptables ] || install -dm 770 -o root -g root /etc/iptables
@@ -138,7 +116,8 @@ update-rc.d iptables defaults
 
 echo controlleer initscript:
 ls -la /etc/init.d/iptables
-find /etc/rc?.d -name \*iptables
+echo "listing startscripts for iptables"
+find /etc/rc?.d -name S\*iptables
 
 echo "stopping iptables"
 /etc/init.d/iptables stop
@@ -165,29 +144,6 @@ $IP6TABLES -P INPUT DROP
 # loopback mag wel
 $IPTABLES -A INPUT -i lo -j ACCEPT
 
-echo validate source and dest
-# Source and Destination Address Sanity Checks
-# Drop packets from networks covered in RFC 1918 (private nets)
-[ "$($IPTABLES -nL|awk '/Chain/ && /VALID-SRC/ {print $2}')" = "VALID-SRC" ] || $IPTABLES -N VALID-SRC
-[ "$($IPTABLES -nL|awk '/Chain/ && /VALID-DST/ {print $2}')" = "VALID-DST" ] || $IPTABLES -N VALID-DST
-
-# wij laten 10.0.0.0/8 wel toe.
-#$IPTABLES -A VALID-SRC -s 10.0.0.0/8 -m recent --set -j DROP
-$IPTABLES -A VALID-SRC -s 172.16.0.0/12 -m recent --set -j DROP
-#$IPTABLES -A VALID-SRC -s 192.168.0.0/16 -m recent --set -j DROP
-$IPTABLES -A VALID-SRC -s 224.0.0.0/4 -m recent --set -j DROP
-$IPTABLES -A VALID-SRC -s 240.0.0.0/5 -m recent --set -j DROP
-$IPTABLES -A VALID-SRC -s 127.0.0.0/8 -m recent --set -j DROP
-$IPTABLES -A VALID-SRC -d 127.0.0.0/8 -m recent --set -j DROP
-$IPTABLES -A VALID-SRC -s 0.0.0.0/8 -m recent --set -j DROP
-$IPTABLES -A VALID-SRC -s 169.254.0.0/16 -m recent --set -j DROP
-$IPTABLES -A VALID-DST -d 224.0.0.0/4 -m recent --set -j DROP
-echo inp/outp naar valid
-#$IPTABLES -A INPUT   -i eth1 -j VALID-SRC
-#$IPTABLES -A OUTPUT  -o eth1 -j VALID-DST
-#$IPTABLES -A INPUT   -i wlan2 -j VALID-SRC
-#$IPTABLES -A OUTPUT  -o wlan2 -j VALID-DST
-
 echo accept nly syn
 # beste eerst bogus syns droppen, bestaande sessies wel accepteren
 $IPTABLES -A INPUT -p TCP ! --syn -m state --state NEW -m recent --set -j DROP
@@ -200,41 +156,10 @@ for icmptype in ${icmptypes};do
   $IPTABLES -A INPUT -p ICMP --icmp-type ${icmptype} -j ACCEPT
 done
 
-allow_ssh_server () {
-  if [ -z "$1" ];then
-    port=22
-  else
-    port=${1}
-  fi
-  $IPTABLES -A INPUT -s 0/0 -p tcp --dport ${port} -j ACCEPT
-}
-
-allow_web_server () {
-  webserverports="80 443"
-  for port in ${webserverports};do
-    echo allow web server port $port
-    $IPTABLES -A INPUT -p tcp --dport ${port} -j ACCEPT
-  done
-}
-
 allow_mysql_server () {
   for src in ${nedap_allowed_servers} ${webservers} ${dbservers} ${db_masters};do 
     echo allow mysql from $src
     $IPTABLES -A INPUT -s ${src} -p tcp --dport 3306 -j ACCEPT
-  done
-}
-
-allow_syslogng_server () {
-  for src in ${webservers} ${dbservers};do 
-    echo allow syslog from $src
-    $IPTABLES -A INPUT -s ${src} -p tcp --dport 514 -j ACCEPT
-  done
-}
-
-allow_munin_server () {
-  for src in ${nedap_allowed_servers};do
-    echo allow munin from $src
-    $IPTABLES -A INPUT -s ${src} -p tcp --dport 4949 -j ACCEPT
   done
 }
 
@@ -245,18 +170,35 @@ allow_nagios_server () {
   done
 }
 
-allow_ssh_server
+allow_ssh_server () {
+  if [ -z "$1" ];then
+    port=22
+  else
+    port=${1}
+  fi
+  $IPTABLES -A INPUT -s 0/0 -p tcp --dport ${port} -j ACCEPT
+}
+
+allow_syslogng_server () {
+  for src in ${webservers} ${dbservers};do 
+    echo allow syslog from $src
+    $IPTABLES -A INPUT -s ${src} -p tcp --dport 514 -j ACCEPT
+  done
+}
+
+allow_web_server () {
+  webserverports="80 443"
+  for port in ${webserverports};do
+    echo allow web server port $port
+    $IPTABLES -A INPUT -p tcp --dport ${port} -j ACCEPT
+  done
+}
+
+# uncomment a line below to allow a service
+#allow_ssh_server
+#allow_mysql_server
 #allow_nagios_server
-#allow_munin_server
-
-echo service specific
-# Type specific services
-case ${functie} in
-  dbr) allow_mysql_server;allow_syslogng_server ;;
-  db) allow_mysql_server ;;
-  web) allow_web_server ;;
-esac
-
+#allow_web_server
 
 echo log rules
 $IPTABLES -t mangle -A PREROUTING -p tcp --tcp-flags ALL FIN,URG,PSH -m limit --limit 5/minute -j LOG --log-level 4 --log-prefix "NMAP-XMAS SCAN:" --log-tcp-options --log-ip-options
@@ -275,11 +217,13 @@ cat << EOF > "${rulesfile}"
 
 EOF
 
-echo "allow fail2ban to add it's rules before we save the rules:"
-/etc/init.d/fail2ban stop
-sleep 1
-/etc/init.d/fail2ban start
-sleep 1
+if [ -f /etc/init.d/fail2ban ];then
+  echo "allow fail2ban to add it's rules before we save the rules:"
+   /etc/init.d/fail2ban stop
+  sleep 1
+  /etc/init.d/fail2ban start
+  sleep 1
+fi
 
 echo "saving rules to ${rulesfile}"
 /sbin/iptables-save >> ${rulesfile}
@@ -287,10 +231,3 @@ echo "saving rules to ${rulesfile}"
 echo "restarting iptables"
 /etc/init.d/iptables restart
 
-#echo "scheduling stop of iptables in 2 minutes to ensure system stays available"
-#echo "/etc/init.d/iptables stop"|at today + 2 minutes
-#
-#echo "here's the at queue:"
-#atq
-#echo
-#echo -e "use atrm <id> to remove the job if you are still connected.\nHowever, you can start iptables using /etc/init.d/iptables start if you're too late..."
