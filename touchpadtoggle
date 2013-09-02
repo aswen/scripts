@@ -1,0 +1,27 @@
+#!/bin/bash
+# touchpadtoggle
+# toggles touchpadoff setting. This is to enable and disable the touchpad while typing on my laptop
+
+# Alexander Swen
+# Private contact: alex@swen.nu, 06-21811135
+
+# CHANGELOG:
+# 20130902	A.Swen	created.
+
+# SETTINGS
+date=$(date +%Y%m%d)
+me=$(basename $0)
+mydir=$(dirname $0)
+
+
+# SCRIPT
+
+tpstate=$(synclient -l|awk '/TouchpadOff/ {print $3}')
+
+if [ ${tpstate} -eq 0 ];then
+  synclient TouchpadOff=1
+else
+  synclient TouchpadOff=0
+fi
+
+# END
