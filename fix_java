@@ -1,0 +1,71 @@
+#!/bin/bash
+# fix_java
+# This downloads Java from URL and installs it as good as it gets...
+
+# Alexander Swen
+# Private contact: alex@swen.nu, 06-21811135
+
+# CHANGELOG:
+# 2014-01-08 A.Swen	created.
+
+# SETTINGS
+date=$(date +%Y%m%d)
+me=$(basename $0)
+mydir=$(dirname $0)
+
+
+# FUNCTIONS
+die () {
+  rc=$1
+  shift
+  echo "==========================">&2
+  echo "====    FATAL  ERROR  ====" >&2
+  echo "==========================">&2
+  echo "" >&2
+  echo $@ >&2
+  exit $rc
+}
+
+
+  # I need to know where to download from
+if [ $# -lt 2 ];then
+  echo "usage: fix_java <url> <version>"
+  echo "example: fix_java http://javadl.sun.com/webapps/download/AutoDL?BundleId=78697 jre1.7.0_25"
+  exit 1
+fi
+
+# check dir
+if [ ! -d /usr/$2 ];then
+  sudo mkdir -p /usr/$2
+  wget -O - $1 | sudo tar zxf - -C /usr
+  sudo chown -R root:root /usr/$2
+  sudo ln -sf /usr/$2 /usr/java
+
+  if $(uname -m | grep '64'); then
+    pluginsrc=/usr/java/lib/amd64/libnpjp2.so
+  else
+    pluginsrc=/usr/java/lib/i386/libnpjp2.so
+  fi
+
+  if [ ! -f ${pluginsrc} ];then
+    die 1 "pluginsource ${pluginsrc} not found"
+    return
+  fi
+
+  # fix google chrome plugin
+  gcpplugins=/opt/google/chrome/plugins
+  [ -d ${gcplugins} ]|| sudo install -dm 755 ${gcplugins}
+  [ -L ${gcplugins}/libnpjp2.so ]|| sudo ln -s ${pluginsrc} ${gcplugins}/libnpjp2.so
+  # fix chromium plugin
+  chromiumplugins=/usr/lib/chromium/plugins
+  [ -d ${chromiumplugins} ]|| sudo install -dm 755 ${chromiumplugins}
+  [ -L ${chromiumplugins}/libnpjp2.so ]|| sudo ln -s ${pluginsrc} ${chromiumplugins}/libnpjp2.so
+
+  # fix ff plugin
+  if [ -f ~/.mozilla/firefox/profiles.ini ];then
+    ffplugins=$(awk -v homedir=~ '/Path/ {sub (/Path=/, ""); print homedir"/.mozilla/firefox/"$1"/plugins" }' ~/.mozilla/firefox/profiles.ini)
+    [ -L ${ffplugins}/libnpjp2.so ]|| sudo ln -s /usr/java/lib/amd64/libnpjp2.so ${ffplugins}/libnpjp2.so
+  fi
+else
+  die 1 "dir /usr/$2 already exists"
+fi
