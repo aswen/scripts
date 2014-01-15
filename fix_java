@@ -41,9 +41,11 @@ if [ ! -d /usr/$2 ];then
   sudo chown -R root:root /usr/$2
   sudo ln -sf /usr/$2 /usr/java
 
-  if $(uname -m | grep '64'); then
+  if [ "$(uname -m | grep '64')" ]; then
+    echo we are on 64bit
     pluginsrc=/usr/java/lib/amd64/libnpjp2.so
   else
+    echo we are on 32bit
     pluginsrc=/usr/java/lib/i386/libnpjp2.so
   fi
 
@@ -64,6 +66,7 @@ if [ ! -d /usr/$2 ];then
   # fix ff plugin
   if [ -f ~/.mozilla/firefox/profiles.ini ];then
     ffplugins=$(awk -v homedir=~ '/Path/ {sub (/Path=/, ""); print homedir"/.mozilla/firefox/"$1"/plugins" }' ~/.mozilla/firefox/profiles.ini)
+    [ -d ${ffplugins} ] || mkdir -p ${fffplugins}
     [ -L ${ffplugins}/libnpjp2.so ]|| sudo ln -s /usr/java/lib/amd64/libnpjp2.so ${ffplugins}/libnpjp2.so
   fi
 else
