@@ -39,6 +39,7 @@ if [ ! -d /usr/$2 ];then
   sudo mkdir -p /usr/$2
   wget -O - $1 | sudo tar zxf - -C /usr
   sudo chown -R root:root /usr/$2
+  sudo rm /usr/java
   sudo ln -sf /usr/$2 /usr/java
 
   if [ "$(uname -m | grep '64')" ]; then
