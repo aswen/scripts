@@ -86,7 +86,7 @@ before_total="$(date +%s)"
 [ ${UID} -gt 0 ] && die 0 "only root may do that (or drop cache won't work)"
 log_msg "$(date) started ${me}"
 [ -x /usr/bin/netperf ] || die 1 netperf not found
-[ -x /usr/bin/wget ] || die 1 wget not found
+[ -x /usr/bin/curl ] || die 1 curl not found
 [ -x /usr/bin/ab ] || die 1 ab not found
 get_options $@
 
@@ -96,34 +96,43 @@ get_options $@
 log_msg "run TCP_STREAM test in netperf against ${TARGET}"
 /usr/bin/netperf -H ${TARGET},4 -t TCP_STREAM >> ${resultsfile}
 drop_cache
+echo >> ${resultsfile}
 log_msg "run TCP_SENDFILE test in netperf against ${TARGET}"
 /usr/bin/netperf -H ${TARGET},4 -t TCP_SENDFILE >> ${resultsfile}
 drop_cache
+echo >> ${resultsfile}
 log_msg "run TCP_STREAM test in netperf against ${TARGET}"
 /usr/bin/netperf -H ${TARGET},4 -t UDP_STREAM >> ${resultsfile}
 drop_cache
+echo >> ${resultsfile}
 
 log_msg "run wget http test by fetching ${REMOTE_BIG_FILE} from ${TARGET}"
-/usr/bin/wget http://${TARGET}/$REMOTE_BIG_FILE -O /dev/null 2>> ${resultsfile}
+/usr/bin/curl http://${TARGET}/$REMOTE_BIG_FILE -o /dev/null 2>> ${resultsfile}
 drop_cache
+echo >> ${resultsfile}
 log_msg "run wget ftp test by fetching ${REMOTE_BIG_FILE} from ${TARGET}"
-/usr/bin/wget ftp://${TARGET}/$REMOTE_BIG_FILE -O /dev/null 2>> ${resultsfile}
+/usr/bin/curl ftp://${TARGET}/$REMOTE_BIG_FILE -o /dev/null 2>> ${resultsfile}
 drop_cache
+echo >> ${resultsfile}
 
 log_msg "run ping flood test with 64bits size packets ${TARGET}"
-/bin/ping -c $PING_REQUESTS_SMALL -s 64 -f ${TARGET} >> ${resultsfile}
+/bin/ping -qc $PING_REQUESTS_SMALL -s 64 -f ${TARGET} >> ${resultsfile}
 drop_cache
+echo >> ${resultsfile}
 log_msg "run ping flood test with 1400bits size packets ${TARGET}"
-/bin/ping -c $PING_REQUESTS_BIG -s 1400 -f ${TARGET} >> ${resultsfile}
+/bin/ping -qc $PING_REQUESTS_BIG -s 1400 -f ${TARGET} >> ${resultsfile}
 drop_cache
+echo >> ${resultsfile}
 log_msg "run ping flood test with 2800bits size packets ${TARGET}"
-/bin/ping -c $PING_REQUESTS_FRAG -s 2800 -f ${TARGET} >> ${resultsfile}
+/bin/ping -qc $PING_REQUESTS_FRAG -s 2800 -f ${TARGET} >> ${resultsfile}
 drop_cache
+echo >> ${resultsfile}
 
 # Apache benchmark
 log_msg "run apache benchmark with ${AB_CONCURRENCY} concurrent connections for ${AB_REQUESTS} times with ${TARGET}"
 /usr/bin/ab -c $AB_CONCURRENCY -n $AB_REQUESTS http://${TARGET}/ >> ${resultsfile}
 drop_cache
+echo >> ${resultsfile}
 
 log_msg "results saved in ${resultsdir}"
 
