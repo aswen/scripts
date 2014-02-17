@@ -7,7 +7,18 @@
 
 # CHANGELOG:
 # 2014-02-17 Gionatan Danti created original for test http://www.ilsistemista.net/index.php/hardware-analysis/17-mikrotik-routerboard-750-gl-review.html
-# 2014-02-17 A.Swen	        modified to add some more tests
+# 2014-02-17 A.Swen         modified to add some more tests
+
+# A bit about how to use this script:
+# you need to have a server and a client and this script is supposed to run on
+# the client.
+# The server needs to have a webserver with a file in the docroot that can be
+# retrieved by the client. (see usage: -f option)
+# Same goes for ftp server (it needs anon access plus a file)
+# Another detail is the netperf packages and the netserver binary that must run
+# on the server end
+# Off course the server's firewall needs to accept all this.
+
 
 # SETTINGS
 date=$(date +%Y%m%d)
