@@ -14,6 +14,14 @@ date=$(date +%Y%m%d)
 me=$(basename $0)
 mydir=$(dirname $0)
 
+RND=$RANDOM
+resultsdir=results/$(date +%Y%m%d.%H%M%S)
+AB_REQUESTS=100000
+AB_CONCURRENCY=4
+PING_REQUESTS_SMALL=100000
+PING_REQUESTS_BIG=100000
+PING_REQUESTS_FRAG=100000
+SLEEPTIME=5
 
 # FUNCTIONS
 die () {
@@ -32,18 +40,19 @@ usage () {
   echo "====       USAGE      ====" >&2
   echo "==========================" >&2
   echo "" >&2
-  echo "Usage: ${me} <userfile>" >&2
+  echo "Usage: ${me} -t <targetip or host> [-f <remote big file> (default=isofile.iso)]" >&2
   echo "" >&2
-  echo "example: ${me} /tmp/userlist" >&2
+  echo "example: ${me} -t 192.168.1.1 -f 1000mb.bin" >&2
   echo "" >&2
   exit 1
 }
 
 get_options () {
   [ $# -gt 0 ]||usage
-  while getopts "s:d:D:u:g:" opt;do
+  while getopts "t:f:" opt;do
     case ${opt} in
-      u) export user=`echo ${OPTARG}` ;;
+      t) export TARGET=`echo ${OPTARG}` ;;
+      f) export REMOTE_BIG_FILE=`echo ${OPTARG}` ;;
       *) usage;;
     esac
   done
@@ -66,77 +75,62 @@ log_msg () {
   echo "${time_running} $1"|tee -a ${short_log}
 }
 
-# SCRIPT
-before_total="$(date +%s)"
-[ ${UID} -gt 0 ] && die 0 only root may do that
-log_msg "$(date) started ${me}"
-# get_options $@
-
-#!/bin/bash
-
-RND=$RANDOM
-#TARGET=172.31.255.27
-TARGET=192.168.89.251
-REMOTE_ISO=isofile.iso
-AB_REQUESTS=100000
-AB_CONCURRENCY=4
-PING_REQUESTS_SMALL=100000
-PING_REQUESTS_BIG=100000
-PING_REQUESTS_FRAG=100000
-SLEEPTIME=5
-
-function drop_cache {
- echo 3 > /proc/sys/vm/drop_caches
- sync
+drop_cache () {
+  echo 3 > /proc/sys/vm/drop_caches
+  sync
+  sleep $SLEEPTIME
 }
 
-mkdir -p results/netperf_$RND
-netperf -H $TARGET,4 -t TCP_STREAM > results/netperf_$RND/netperf_tcpstream_result.txt
-drop_cache
-sleep $SLEEPTIME
-netperf -H $TARGET,4 -t TCP_SENDFILE > results/netperf_$RND/netperf_tcpsendfile_result.txt
-drop_cache
-sleep $SLEEPTIME
-netperf -H $TARGET,4 -t UDP_STREAM > results/netperf_$RND/netperf_udpstream_result.txt
-drop_cache
-sleep $SLEEPTIME
+# SCRIPT
+before_total="$(date +%s)"
+[ ${UID} -gt 0 ] && die 0 "only root may do that (or drop cache won't work)"
+log_msg "$(date) started ${me}"
+[ -x /usr/bin/netperf ] || die 1 netperf not found
+[ -x /usr/bin/wget ] || die 1 wget not found
+[ -x /usr/bin/ab ] || die 1 ab not found
+get_options $@
 
-exit
+[ -z ${REMOTE_BIG_FILE} ] && REMOTE_BIG_FILE=isofile.iso
 
-mkdir -p results/ab_$RND
-ab -c $AB_CONCURRENCY -n $AB_REQUESTS http://$TARGET/ > results/ab_$RND/ab_result.txt
-drop_cache
-sleep $SLEEPTIME
+if [ -d ${resultsdir} ];then
+  mkdir -p ${resultsdir} || die 2 "cannot create resultdir ${resultsdir}"
+fi
 
-mkdir -p results/wget_$RND
-wget http://$TARGET/$REMOTE_ISO -O /tmp/$REMOTE_ISO 2> results/wget_$RND/wget_http_result.txt
+# netperf
+log_msg "run TCP_STREAM test in netperf against ${TARGET}"
+/usr/bin/netperf -H ${TARGET},4 -t TCP_STREAM > ${resultsdir}/netperf_tcpstream_result.txt
 drop_cache
-sleep $SLEEPTIME
-wget ftp://$TARGET/$REMOTE_ISO -O /tmp/$REMOTE_ISO 2> results/wget_$RND/wget_ftp_result.txt
+log_msg "run TCP_SENDFILE test in netperf against ${TARGET}"
+/usr/bin/netperf -H ${TARGET},4 -t TCP_SENDFILE > ${resultsdir}/netperf_tcpsendfile_result.txt
 drop_cache
-sleep $SLEEPTIME
+log_msg "run TCP_STREAM test in netperf against ${TARGET}"
+/usr/bin/netperf -H ${TARGET},4 -t UDP_STREAM > ${resultsdir}/netperf_udpstream_result.txt
+drop_cache
 
-mkdir -p results/ping_$RND
-ping -c $PING_REQUESTS_SMALL -s 64 -f $TARGET > results/ping_$RND/ping_small.txt
+log_msg "run wget http test by fetching ${REMOTE_BIG_FILE} from ${TARGET}"
+/usr/bin/wget http://${TARGET}/$REMOTE_BIG_FILE -O /dev/null 2> ${resultsdir}/wget_http_result.txt
 drop_cache
-sleep $SLEEPTIME
-ping -c $PING_REQUESTS_BIG -s 1400 -f $TARGET > results/ping_$RND/ping_big.txt
+log_msg "run wget ftp test by fetching ${REMOTE_BIG_FILE} from ${TARGET}"
+/usr/bin/wget ftp://${TARGET}/$REMOTE_BIG_FILE -O /dev/null 2> ${resultsdir}/wget_ftp_result.txt
 drop_cache
-sleep $SLEEPTIME
-ping -c $PING_REQUESTS_FRAG -s 2800 -f $TARGET > results/ping_$RND/ping_frag.txt
-drop_cache
-sleep $SLEEPTIME
 
-mkdir -p results/netperf_$RND
-netperf -H $TARGET,4 -t TCP_STREAM > results/netperf_$RND/netperf_tcpstream_result.txt
+log_msg "run ping flood test with 64bits size packets ${TARGET}"
+/bin/ping -c $PING_REQUESTS_SMALL -s 64 -f ${TARGET} > ${resultsdir}/ping_small.txt
 drop_cache
-sleep $SLEEPTIME
-netperf -H $TARGET,4 -t TCP_SENDFILE > results/netperf_$RND/netperf_tcpsendfile_result.txt
+log_msg "run ping flood test with 1400bits size packets ${TARGET}"
+/bin/ping -c $PING_REQUESTS_BIG -s 1400 -f ${TARGET} > ${resultsdir}/ping_big.txt
 drop_cache
-sleep $SLEEPTIME
-netperf -H $TARGET,4 -t UDP_STREAM > results/netperf_$RND/netperf_udpstream_result.txt
+log_msg "run ping flood test with 2800bits size packets ${TARGET}"
+/bin/ping -c $PING_REQUESTS_FRAG -s 2800 -f ${TARGET} > ${resultsdir}/ping_frag.txt
 drop_cache
-sleep $SLEEPTIME
+
+# Apache benchmark
+log_msg "run apache benchmark with ${AB_CONCURRENCY} concurrent connections for ${AB_REQUESTS} times with ${TARGET}"
+/usr/bin/ab -c $AB_CONCURRENCY -n $AB_REQUESTS http://${TARGET}/ > ${resultsdir}/ab_result.txt
+drop_cache
+
+log_msg "results saved in ${resultsdir}"
+
 
 duration ${before_total}
 log_msg "Total time taken: ${hours}:${minutes}:${seconds}"
