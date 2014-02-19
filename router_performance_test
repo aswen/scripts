@@ -29,6 +29,7 @@ RND=$RANDOM
 resultsfile=$(date +%Y%m%d.%H%M%S)-router_perf_test_results
 AB_REQUESTS=100000
 AB_CONCURRENCY=4
+PING_REQUESTS_NORM=10
 PING_REQUESTS_SMALL=100000
 PING_REQUESTS_BIG=100000
 PING_REQUESTS_FRAG=100000
@@ -126,6 +127,10 @@ log_msg "run wget ftp test by fetching ${REMOTE_BIG_FILE} from ${TARGET}"
 drop_cache
 echo >> ${resultsfile}
 
+log_msg "run ping test with 64bits size packets ${TARGET}"
+/bin/ping -qc $PING_REQUESTS_NORM -s 64 ${TARGET} >> ${resultsfile}
+drop_cache
+echo >> ${resultsfile}
 log_msg "run ping flood test with 64bits size packets ${TARGET}"
 /bin/ping -qc $PING_REQUESTS_SMALL -s 64 -f ${TARGET} >> ${resultsfile}
 drop_cache
