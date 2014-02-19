@@ -52,19 +52,20 @@ usage () {
   echo "====       USAGE      ====" >&2
   echo "==========================" >&2
   echo "" >&2
-  echo "Usage: ${me} -t <targetip or host> [-f <remote big file> (default=1G.bin)]" >&2
+  echo "Usage: ${me} -t <targetip or host> [-f <remote big file> (default=1G.bin)] [-n <testname>" >&2
   echo "" >&2
-  echo "example: ${me} -t 192.168.1.1 -f 1000mb.bin" >&2
+  echo "example: ${me} -t 192.168.1.1 -f 1000mb.bin -n 'via switch'" >&2
   echo "" >&2
   exit 1
 }
 
 get_options () {
   [ $# -gt 0 ]||usage
-  while getopts "t:f:" opt;do
+  while getopts "t:f:n:" opt;do
     case ${opt} in
       t) export TARGET=`echo ${OPTARG}` ;;
       f) export REMOTE_BIG_FILE=`echo ${OPTARG}` ;;
+      n) export testname=`echo ${OPTARG}` ;;
       *) usage;;
     esac
   done
@@ -96,11 +97,13 @@ drop_cache () {
 # SCRIPT
 before_total="$(date +%s)"
 [ ${UID} -gt 0 ] && die 0 "only root may do that (or drop cache won't work)"
-log_msg "$(date) started ${me}"
+# If someone used -n we append the testname to the resultsfilename
 [ -x /usr/bin/netperf ] || die 1 netperf not found
 [ -x /usr/bin/curl ] || die 1 curl not found
 [ -x /usr/bin/ab ] || die 1 ab not found
 get_options $@
+[ -n "${testname}" ] && resultsfile="${resultsfile}-${testname}"
+log_msg "$(date) started ${me} test ${testname}"
 
 [ -z ${REMOTE_BIG_FILE} ] && REMOTE_BIG_FILE=1G.bin
 
