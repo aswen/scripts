@@ -113,7 +113,7 @@ log_msg "run TCP_SENDFILE test in netperf against ${TARGET}"
 /usr/bin/netperf -H ${TARGET},4 -t TCP_SENDFILE >> ${resultsfile}
 drop_cache
 echo >> ${resultsfile}
-log_msg "run TCP_STREAM test in netperf against ${TARGET}"
+log_msg "run UDP_STREAM test in netperf against ${TARGET}"
 /usr/bin/netperf -H ${TARGET},4 -t UDP_STREAM >> ${resultsfile}
 drop_cache
 echo >> ${resultsfile}
