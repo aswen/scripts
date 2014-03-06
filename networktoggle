@@ -24,12 +24,11 @@ case ${netstate} in
   enabled )
     echo "wifi is ${netstate}. It will be disabled now"
     /usr/bin/nmcli nm wifi off
-    sudo ip link set dev eth0 up
-    sudo dhclient eth0
+    sudo ifup eth0
   ;;
   disabled )
     echo "wifi is ${netstate}. It will be enabled now"
-    sudo ip link set dev eth0 down
+    sudo ifdown eth0
     /usr/bin/nmcli nm wifi on
   ;;
 esac
