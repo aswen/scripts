@@ -2,7 +2,7 @@
 # networktoggle
 # toggles wifi on and off
 # requires the following in /etc/sudoers
-#  <username> ALL=NOPASSWD: /sbin/dhclient
+#  <username> ALL=NOPASSWD: /sbin/ifup and down
 
 # Alexander Swen
 # Private contact: alex@swen.nu
