@@ -1,0 +1,91 @@
+#!/bin/bash
+# test_hdd_perf
+# executes various tests against a given disk
+
+# Alexander Swen
+# Private contact: alex@swen.nu
+
+# CHANGELOG:
+# 2010-03-25  A.Swen  created.
+
+# SETTINGS
+date=$(date +%Y%m%d)
+me=$(basename $0)
+mydir=$(dirname $0)
+
+# FUNCTIONS
+die () {
+  rc=$1
+  shift
+  echo "====================================================" >&2
+  echo "====                FATAL  ERROR                ====" >&2
+  echo "====================================================" >&2
+  echo "" >&2
+  echo $@ >&2
+  exit $rc
+}
+
+usage () {
+  echo "====================================================" >&2
+  echo "====                   USAGE                    ====" >&2
+  echo "====================================================" >&2
+  echo "" >&2
+  echo "Usage: ${me} [-s \"testfilesize in Mb\"] [-d dirname] [-D diskdevicename] [-u uid] [-g gid]" >&2
+  echo "All parameters except -s are obligatory" >&2
+  echo "" >&2
+  echo "example: ${me} -s \"16000\" -d /data -D /dev/sda -u 1000 -g 500" >&2
+  echo "" >&2
+  exit 1
+}
+
+testperf () {
+echo "we set uid and gid for bonnie++ to ${user} and ${group}"
+echo "current ownership: $(ls -al ${dir}/.|head -2|tail -1|awk '{print $3" "$4}')"
+chown ${user}:${group} ${dir}
+
+#echo "bonnie -s ${size}"
+#cd "${dir}"
+#time bonnie -s ${size}
+#echo " "
+
+echo -n hdparm
+time hdparm -Tt ${disk}
+echo " "
+
+echo "bonnie++ with writebuffering enabled"
+time bonnie++ -d "${dir}" -u ${user}:${group} -n20
+echo " "
+
+echo "bonnie++ with writebuffering disabled, (fsync() after every write)"
+time bonnie++ -d "${dir}" -u ${user}:${group} -n20 -b
+echo " "
+}
+
+# SCRIPT
+[ ${UID} -gt 0 ] && die 0 only root may do that
+[ $# -gt 0 ]||usage
+
+while getopts "s:d:D:u:g:" opt;do
+  case ${opt} in
+    u) export user=`echo ${OPTARG}` ;;
+    g) export group=`echo ${OPTARG}` ;;
+    s) export size=`echo ${OPTARG}` ;;
+    d) export dir=`echo ${OPTARG}` ;;
+    D) export disk=`echo ${OPTARG}` ;;
+    *) usage;;
+  esac
+done
+
+#for tool in /usr/bin/bonnie "/usr/sbin/bonnie++" /sbin/hdparm;do [ -x "${tool}" ] || die 1 "Tool ${tool} not found"
+[ -z "${user}" -o -z "${group}" -o -z "${dir}" -o -z "${disk}" ] && usage
+[ -d "${dir}" ] ||die 2 "Dir ${dir} not found"
+
+if [ -z "${size}" ];then
+  ram=$(free -m|awk '/Mem/ {print $2}')
+  size=$((2*ram))
+  echo "RAM is ${ram}Mb and we use a file size of 2x${ram}=${size}Mb"
+
+fi
+time testperf
+
+# END
