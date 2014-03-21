@@ -67,7 +67,7 @@ usage () {
   echo "====       USAGE      ====" >&2
   echo "==========================" >&2
   echo "" >&2
-  echo "Usage: ${me} -t <targetip or host> [-f <remote big file> (default=1G.bin)] [-n <testname>" >&2
+  echo "Usage: ${me} -t <targetip or host> [-f <remote big file> (default=1G.bin)] [-n <testname>]" >&2
   echo "" >&2
   echo "example: ${me} -t 192.168.1.1 -f 1000mb.bin -n 'via switch'" >&2
   echo "" >&2
@@ -168,7 +168,7 @@ log_msg "run apache benchmark with ${AB_CONCURRENCY} concurrent connections for 
 drop_cache
 echo >> ${resultsfile}
 
-log_msg "results saved in ${resultsdir}"
+log_msg "results saved in ${resultsfile}"
 
 
 duration ${before_total}
