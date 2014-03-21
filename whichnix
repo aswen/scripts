@@ -24,6 +24,9 @@
 # based on script found at http://www.unix.com/302211858-post6.html posted by a user known as "nobo"
 # 2011-08-24 	A.Swen	created.
 
+# TODO
+# make proper use of lsb_release package or skip this entire script as lsb_release can tell it all
+
 # SETTINGS
 date=$(date +%Y%m%d)
 me=$(basename $0)
