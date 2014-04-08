@@ -146,7 +146,7 @@ allow_ftp_server () {
 allow_ssh_server () {
   if [ -z "$1" ];then
     port=22
-    allowed_ssh_servers="10.107.119.0/24 10.107.120.0/24 192.168.200.0/24"
+    allowed_ssh_servers="10.107.119.0/24 10.107.120.0/24 192.168.200.0/24 213.160.213.80/28 87.249.123.0/25 77.222.68.16/28 217.114.110.32/27 77.222.68.160/27 77.222.80.64/27 213.126.140.96/27 213.84.201.69 46.165.221.66"
     for src in ${allowed_ssh_servers} ;do
       echo allow SSH from $src
       $IPTABLES -A INPUT -d ${INTERNAL_IP} -s ${src} -p tcp --dport ${port} -j ACCEPT
