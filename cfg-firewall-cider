@@ -192,6 +192,7 @@ allow_smtp_server () {
 allow_puppet_server () {
   $IPTABLES -A INPUT -s 192.168.200.0/24 -p tcp --dport 8140 -j ACCEPT
   $IPTABLES -A INPUT -s 10.107.119.0/24 -p tcp --dport 8140 -j ACCEPT
+  $IPTABLES -A INPUT -s 46.165.221.66 -p tcp --dport 8140 -j ACCEPT
 }
 
 allow_dhcp_server () {
