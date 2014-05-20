@@ -1,0 +1,69 @@
+#!/bin/bash
+# brightctl
+# adds or subtrackts from the brightness setting
+
+# Copyright (C) 2014-2015 Alexander Swen <alex@swen.nu>
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Alexander Swen
+# Private contact: alex@swen.nu
+
+# CHANGELOG:
+# 20140520	A.Swen	created.
+
+# SETTINGS
+date=$(date +%Y%m%d)
+me=$(basename $0)
+mydir=$(dirname $0)
+ctlfile=/sys/class/backlight/radeon_bl0/brightness
+
+# FUNCTIONS
+die () {
+  rc=$1
+  shift
+  echo "==========================">&2
+  echo "====    FATAL  ERROR  ====" >&2
+  echo "==========================">&2
+  echo "" >&2
+  echo $@ >&2
+  exit $rc
+}
+
+usage () {
+  echo "==========================" >&2
+  echo "====       USAGE      ====" >&2
+  echo "==========================" >&2
+  echo "" >&2
+  echo "Usage: ${me} <up> or <down>" >&2
+  echo "" >&2
+  echo "example: ${me} up" >&2
+  echo "" >&2
+  exit 1
+}
+
+# SCRIPT
+[ ${UID} -gt 0 ] && die 1 only root may do that
+[ -f ${ctlfile} ] || die 2 controlfile ${ctlfile} not found
+
+br=$(cat ${ctlfile})
+
+case $1 in
+  up) newbr=$((br+5));;
+  down) newbr=$((br-5));;
+  *) usage;;
+esac
+echo ${newbr} > ${ctlfile}
+
+# END
