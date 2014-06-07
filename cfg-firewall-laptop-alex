@@ -66,7 +66,7 @@ MODPROBE=/sbin/modprobe
 # Maak de dir waarin de cfg moet
 [ -d /etc/iptables ] || install -dm 770 -o root -g root /etc/iptables
 # Maak init script
-cat << EOF > /etc/init.d/iptables
+[ -f /etc/init.d/iptables ] || cat << EOF > /etc/init.d/iptables
 #!/bin/bash
 # originaly written by Simon Richter <sjr@debian.org>
 # 2011-04-19 changed by A.Swen to work better with rules etc
@@ -103,17 +103,17 @@ case "\${1}" in
     \${MODPROBE} ipt_LOG
     \${MODPROBE} ipt_REJECT
     [ -f \${rulesfile} ] && \${IPTABLESRESTORE} <\${rulesfile}
-  ;;  
+  ;;
   stop)
     \${IPTABLES} -P FORWARD ACCEPT
     \${IPTABLES} -P INPUT ACCEPT
     \${IPTABLES} -P OUTPUT ACCEPT
     for table in filter nat mangle raw;do \${IPTABLES} -t \${table} -F;done
-  ;;  
+  ;;
   restart)
     \$0 stop
     \$0 start
-  ;;  
+  ;;
   status)
     for table in filter nat mangle raw;do echo table \${table};\${IPTABLES} -t \${table} -nL;echo;done
   ;;
@@ -172,7 +172,7 @@ for icmptype in ${icmptypes};do
 done
 
 allow_mysql_server () {
-  for src in ${nedap_allowed_servers} ${webservers} ${dbservers} ${db_masters};do 
+  for src in ${nedap_allowed_servers} ${webservers} ${dbservers} ${db_masters};do
     echo allow mysql from $src
     $IPTABLES -A INPUT -s ${src} -p tcp --dport 3306 -j ACCEPT
   done
@@ -195,7 +195,7 @@ allow_ssh_server () {
 }
 
 allow_syslogng_server () {
-  for src in ${webservers} ${dbservers};do 
+  for src in ${webservers} ${dbservers};do
     echo allow syslog from $src
     $IPTABLES -A INPUT -s ${src} -p tcp --dport 514 -j ACCEPT
   done
