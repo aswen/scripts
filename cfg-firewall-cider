@@ -47,8 +47,8 @@ DEPMOD=/sbin/depmod
 MODPROBE=/sbin/modprobe
 type=file
 INTERNAL_IF=eth0
-INTERNAL_IP=10.107.119.4
-BROADCAST=10.107.119.255
+INTERNAL_IP=172.17.1.4
+BROADCAST=172.17.255.255
 br4_ip=192.168.4.4
 
 service iptables stop
@@ -103,7 +103,6 @@ echo validate source and dest
 [ "$($IPTABLES -nL|awk '/Chain/ && /VALID-DST/ {print $2}')" = "VALID-DST" ] || $IPTABLES -N VALID-DST
 # wij laten 10.0.0.0/8 wel toe.
 #$IPTABLES -A VALID-SRC -s 10.0.0.0/8 -m recent --set -j DROP
-$IPTABLES -A VALID-SRC -s 172.16.0.0/12 -m recent --set -j DROP
 # wij laten 192.168.0.0/16 wel toe.
 #$IPTABLES -A VALID-SRC -s 192.168.0.0/16 -m recent --set -j DROP
 $IPTABLES -A VALID-SRC -s 224.0.0.0/4 -m recent --set -j DROP
@@ -146,7 +145,7 @@ allow_ftp_server () {
 allow_ssh_server () {
   if [ -z "$1" ];then
     port=22
-    allowed_ssh_servers="10.107.119.0/24 10.107.120.0/24 192.168.200.0/24 213.160.213.80/28 87.249.123.0/25 77.222.68.16/28 217.114.110.32/27 77.222.68.160/27 77.222.80.64/27 213.126.140.96/27 213.84.201.69 46.165.221.66"
+    allowed_ssh_servers="172.17.0.0/16 192.168.200.0/24 213.160.213.80/28 87.249.123.0/25 77.222.68.16/28 217.114.110.32/27 77.222.68.160/27 77.222.80.64/27 213.126.140.96/27 213.84.201.69 46.165.221.66 87.253.142.25"
     for src in ${allowed_ssh_servers} ;do
       echo allow SSH from $src
       $IPTABLES -A INPUT -d ${INTERNAL_IP} -s ${src} -p tcp --dport ${port} -j ACCEPT
@@ -191,8 +190,10 @@ allow_smtp_server () {
 
 allow_puppet_server () {
   $IPTABLES -A INPUT -s 192.168.200.0/24 -p tcp --dport 8140 -j ACCEPT
-  $IPTABLES -A INPUT -s 10.107.119.0/24 -p tcp --dport 8140 -j ACCEPT
+  $IPTABLES -A INPUT -s 172.17.0.0/16 -p tcp --dport 8140 -j ACCEPT
   $IPTABLES -A INPUT -s 46.165.221.66 -p tcp --dport 8140 -j ACCEPT
+  $IPTABLES -A INPUT -s 87.253.142.25 -p tcp --dport 8140 -j ACCEPT
+  #$IPTABLES -A INPUT -s 46.165.221.66 -p tcp --dport 8081 -j ACCEPT
 }
 
 allow_dhcp_server () {
@@ -207,8 +208,6 @@ allow_tftp_server () {
 
 allow_iscsi_targetd () {
   $IPTABLES -A INPUT -s 0/0 -d ${br4_ip} -p tcp --dport 3260 -j ACCEPT
-  $IPTABLES -A INPUT -s 10.107.119.8 -d ${INTERNAL_IP} -p tcp --dport 3260 -j ACCEPT
-  $IPTABLES -A INPUT -s 10.107.119.10 -d ${INTERNAL_IP} -p tcp --dport 3260 -j ACCEPT
 }
 
 allow_logitech_squeezeboxserver () {
