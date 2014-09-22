@@ -27,7 +27,7 @@
 date=$(date +%Y%m%d)
 me=$(basename $0)
 mydir=$(dirname $0)
-ctlfile=/sys/class/backlight/radeon_bl0/brightness
+ctlfile=/sys/class/backlight/intel_backlight/brightness
 
 # FUNCTIONS
 die () {
@@ -59,9 +59,18 @@ usage () {
 
 br=$(cat ${ctlfile})
 
+# vary in steps
+if [ $br -le 937 -a $br -gt 100 ];then
+  step=50
+elif [ $br -le 100 -a $br -gt 10 ];then
+  step=10
+elif [ $br -le 10 ];then
+  step=1
+fi
+
 case $1 in
-  up) newbr=$((br+5));;
-  down) newbr=$((br-5));;
+  up) newbr=$((br+step));;
+  down) newbr=$((br-step));;
   *) usage;;
 esac
 echo ${newbr} > ${ctlfile}
