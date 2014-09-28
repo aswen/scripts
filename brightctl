@@ -27,7 +27,6 @@
 date=$(date +%Y%m%d)
 me=$(basename $0)
 mydir=$(dirname $0)
-ctlfile=/sys/class/backlight/intel_backlight/brightness
 
 # FUNCTIONS
 die () {
@@ -55,6 +54,17 @@ usage () {
 
 # SCRIPT
 [ ${UID} -gt 0 ] && die 1 only root may do that
+case $HOSTNAME in
+  nvc2618)
+    ctlfile=/sys/class/backlight/intel_backlight/brightness
+    ;;
+  laptop-nico-aardbei)
+    ctlfile=/sys/class/backlight/acpi_video0/brightness
+    ;;
+  *)
+    die 1 "Dunno the ctlfile."
+  ;;
+esac
 [ -f ${ctlfile} ] || die 2 controlfile ${ctlfile} not found
 
 br=$(cat ${ctlfile})
@@ -70,7 +80,7 @@ fi
 
 case $1 in
   up) newbr=$((br+step));;
-  down) newbr=$((br-step));;
+down) newbr=$((br-step));;
   *) usage;;
 esac
 echo ${newbr} > ${ctlfile}
