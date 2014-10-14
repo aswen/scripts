@@ -1,0 +1,287 @@
+#!/bin/bash
+# cfg-firewall-laptop-harm
+# This script configures the firewall of Harms laptop
+
+# Copyright (C) 2014-2015 Alexander Swen <alex@swen.nu>
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Alexander Swen
+# Private contact: alex@swen.nu
+
+# CHANGELOG:
+# 29-11-2006  A.Swen  created.
+# 19-04-2011  A.Swen  configures firewall for debian servers
+# 14-12-2011  A.Swen  configures firewall for moves servers
+# 22-12-2011  A.Swen  reworked a bit to keep open sessions open and added at job to stop iptables in 2 minutes
+#                     in case something goes wrong and the executer of the script loses connection...
+# 02-01-2012  A.Swen  added a fil2ban restart before iptables-save in order to get the fail2ban rules in the rulesfile
+# 11-07-2013  A.Swen  modified for my laptop
+# 14-10-2014  A.Swen  pretify script
+
+# TODO
+
+# SETTINGS
+export date=$(date +%Y%m%d)
+export me=$(basename $0)
+export mydir=$(dirname $0)
+
+# CONFIG
+
+# Type sets the type of this server. Based on this type a subset of the
+# functions will be executed. It's a basic way of creating profiles.
+type=laptop
+rulesfile=/etc/iptables/rules
+
+# FUNCTIONS
+die () {
+  rc=$1
+  shift
+  printf '%s\n' "=====================" >&2
+  printf '%s\n' "==== FATAL ERROR ====" >&2
+  printf '%s\n\n' "=====================" >&2
+  printf '%s\n\n' "$@" >&2
+  cleanup
+  exit $rc
+}
+
+log () { printf '%s %s\n' "$(date +%F' '%T)" "$@"; }
+
+usage () {
+  printf '%s\n' "===============" >&2
+  printf '%s\n' "==== USAGE ====" >&2
+  printf '%s\n\n' "===============" >&2
+  printf '%s\n\n' "Usage: ${me}" >&2
+  printf '%s\n\n' "example: ${me}" >&2
+  exit 1
+}
+
+cleanup () {
+  [ -n "${tmpfile}" -a -f "${tmpfile}" ] && rm -f "${tmpfile}"
+  [ -n "${tmpdir}" -a -d "${tmpdir}"   ] && rm -f "${tmpdir}"
+}
+
+is_int () { return $(test "$1" -eq "$1" > /dev/null 2>&1); }
+
+# SCRIPT
+[ ${UID} -gt 0 ] && die 0 only root may do that
+
+log "Configure Firewall"
+
+# Create a backup first
+log "Creating backup of existing firewall config. (if any)"
+[ -f /etc/sysconfig/iptables ] && cp /etc/sysconfig/iptables /etc/sysconfig/iptables-$(date +%F-%T)
+
+IPTABLES=/sbin/iptables
+IP6TABLES=/sbin/ip6tables
+DEPMOD=/sbin/depmod
+MODPROBE=/sbin/modprobe
+
+log "Stopping current firewall."
+service iptables stop
+
+log "Add config of mod recent module."
+[ -f /etc/modprobe.d/iptables_mod_recent.conf ] || echo "options ipt_recent ip_list_tot=1000" >> /etc/modprobe.d/iptables_mod_recent.conf
+$MODPROBE ipt_recent
+
+log "Flush all current rules and chains."
+$IPTABLES -F
+$IPTABLES -A INPUT -p TCP ! --syn -m state --state NEW -m recent --set -j DROP
+$IPTABLES -A INPUT -p ALL -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+log "Set standard policy DROP to Input, Forward and Output chain."
+[ "$($IPTABLES -nL|awk '/Chain/ && /RH-Firewall-1-INPUT/ {print $2}')" = "RH-Firewall-1-INPUT" ] && $IPTABLES -X RH-Firewall-1-INPUT
+$IPTABLES -P FORWARD DROP
+IPTABLES -P INPUT DROP
+$IPTABLES -P OUTPUT ACCEPT
+
+log "Adding DDos and Brute-force chains."
+[ "$($IPTABLES -nL|awk '/Chain/ && /BRUTE-FORCE/ {print $2}')" = "BRUTE-FORCE" ] || $IPTABLES -N BRUTE-FORCE
+[ "$($IPTABLES -nL|awk '/Chain/ && /DDOS/ {print $2}')" = "DDOS" ] || $IPTABLES -N DDOS
+
+#ip6 hebben we niet
+$IP6TABLES -P INPUT DROP
+
+# loopback mag wel
+$IPTABLES -A INPUT -i lo -j ACCEPT
+
+log "Validate source and destination traffic."
+[ "$($IPTABLES -nL|awk '/Chain/ && /VALID-SRC/ {print $2}')" = "VALID-SRC" ] || $IPTABLES -N VALID-SRC
+[ "$($IPTABLES -nL|awk '/Chain/ && /VALID-DST/ {print $2}')" = "VALID-DST" ] || $IPTABLES -N VALID-DST
+
+log "Adding filter rules to the Valid-src and dst chains."
+# Normally we do not accept any traffic from RFC-1918 sources or to those.
+# https://nl.wikipedia.org/wiki/RFC_1918.
+# however, this is a laptop and that should accept all that...
+$IPTABLES -A VALID-SRC -s 224.0.0.0/4 -m recent --set -j DROP
+$IPTABLES -A VALID-SRC -s 240.0.0.0/5 -m recent --set -j DROP
+$IPTABLES -A VALID-SRC -s 127.0.0.0/8 -m recent --set -j DROP
+$IPTABLES -A VALID-SRC -d 127.0.0.0/8 -m recent --set -j DROP
+$IPTABLES -A VALID-SRC -s 0.0.0.0/8 -m recent --set -j DROP
+$IPTABLES -A VALID-SRC -d 255.255.255.255 -m recent --set -j DROP
+$IPTABLES -A VALID-SRC -s 169.254.0.0/16 -m recent --set -j DROP
+$IPTABLES -A VALID-DST -d 224.0.0.0/4 -m recent --set -j DROP
+
+log "Inp/outp to valid."
+$IPTABLES -A INPUT  -i eth0 -j VALID-SRC
+$IPTABLES -A OUTPUT -o eth0 -j VALID-DST
+$IPTABLES -A INPUT  -i wlan0 -j VALID-SRC
+$IPTABLES -A OUTPUT -o wlan0 -j VALID-DST
+
+log "Allowing Icmp to be a good netizen."
+icmptypes="3 8 11 12"
+for icmptype in ${icmptypes};do
+  $IPTABLES -A INPUT -p ICMP -s 0/0 --icmp-type ${icmptype} -j ACCEPT
+done
+
+# Below You'll find functions that open specific ports per service.
+allow_ftp_server () {
+  log "Allow ftp."
+  $IPTABLES -A BRUTE-FORCE  -m recent --update --seconds 60 --hitcount 4 --rttl --name FTP -m limit --limit 1/minute -j LOG --log-level 4 --log-prefix "BRUTE-FORCE-FTP "
+  $IPTABLES -A BRUTE-FORCE  -m recent --rcheck --seconds 60 --hitcount 4 --rttl --name FTP -j DROP
+  $IPTABLES -A BRUTE-FORCE  -m recent --rcheck --rttl --name FTP -j ACCEPT
+  $IPTABLES -A INPUT -s 0/0  -p tcp --dport 21 -m state --state NEW -m recent --set --name FTP -j BRUTE-FORCE
+}
+
+allow_ssh_server () {
+  [ -z "${allowed_ssh_clients}" ] && allowed_ssh_clients=0.0.0.0
+  if [ -z "$1" ];then
+    port=22
+    for src in ${allowed_ssh_clients[@]} ;do
+      log "Allow SSH from $src"
+      $IPTABLES -A INPUT -s ${src} -p tcp --dport ${port} -j ACCEPT
+    done
+  else
+    port=${1}
+    $IPTABLES -A INPUT -p tcp --dport ${port} -j ACCEPT
+  fi
+}
+
+allow_dns_server () {
+  log "Allow DNS."
+  $IPTABLES -A INPUT -s 0/0 -p udp --dport 53 -j ACCEPT
+  $IPTABLES -A INPUT -s 0/0 -p tcp --dport 53 -j ACCEPT
+}
+
+allow_web_server () {
+  log "Allow http/https"
+  webserverports="80 443 8080 8443"
+  for port in ${webserverports};do
+    $IPTABLES -A INPUT -s 0/0 -p tcp --dport ${port} -j ACCEPT
+  done
+}
+
+allow_smtp_server () {
+  log "Allow smtp."
+  $IPTABLES -A INPUT -s 0/0 -p tcp --dport 25 -j ACCEPT
+}
+
+allow_puppet_server () {
+  log "Allow puppetmaster traffic."
+  $IPTABLES -A INPUT -p tcp --dport 8140 -j ACCEPT
+}
+
+allow_dhcp_server () {
+  log "Allow dhcp."
+  $IPTABLES -A INPUT -p udp -s 0/0 --sport 68 --dport 67 -j ACCEPT
+  $IPTABLES -A INPUT -p tcp -s 0/0 --sport 68 --dport 67 -j ACCEPT
+}
+
+allow_tftp_server () {
+  log "Allow tftp."
+  $IPTABLES -A INPUT -s 0/0 -p udp --dport 69 -j ACCEPT
+  $IPTABLES -A INPUT -s 0/0 -p tcp --dport 69 -j ACCEPT
+}
+
+allow_iscsi_targetd () {
+  log "Iscsi target."
+  $IPTABLES -A INPUT -s 0/0 -d ${br4_ip} -p tcp --dport 3260 -j ACCEPT
+}
+
+allow_smb_server () {
+  log "Allow Samba."
+  $IPTABLES -A INPUT -s 0/0 -p udp --dport 137 -j ACCEPT
+  $IPTABLES -A INPUT -s 0/0 -p udp --dport 138 -j ACCEPT
+  $IPTABLES -A INPUT -s 0/0 -p tcp --dport 139 -j ACCEPT
+  $IPTABLES -A INPUT -s 0/0 -p tcp --dport 445 -j ACCEPT
+}
+
+allow_munin_server () {
+  for svr in ${munin_servers};do
+    log "Allow traffic from Muninserver ${svr}."
+    $IPTABLES -A INPUT -s ${svr} -p tcp --dport 4949 -j ACCEPT
+  done
+}
+
+allow_nagios_server () {
+  for svr in ${nagios_servers};do
+    log "Allow traffic from Nagiosserver ${svr}."
+    $IPTABLES -A INPUT -s ${svr} -p tcp --dport 5666 -j ACCEPT
+  done
+}
+
+allow_nfs_server () {
+  log "Allow nfs."
+  nfsports="111 2049 40000:40004"
+  for port in ${nfsports};do
+    $IPTABLES -A INPUT -p tcp --dport ${port} -j ACCEPT
+    $IPTABLES -A INPUT -p udp --dport ${port} -j ACCEPT
+  done
+}
+
+log "Load service specific rules."
+# Type specific services
+case ${type} in
+  dhcp) allow_dhcp_server ;;
+  inst)
+    allow_dhcp_server
+    allow_tftp_server
+    allow_web_server
+    ;;
+  dns) allow_dns_server ;;
+  ftp) allow_ftp_server ;;
+  mail) allow_smtp_server ;;
+  dev|svn|web)
+    allow_web_server
+    ;;
+  kvm)
+    allow_kvm_clients
+    ;;
+  laptop)
+    # Make sure we can remotely manage the laptop
+    allow_ssh_server
+    ;;
+esac
+
+log "Set some log rules."
+$IPTABLES -t mangle -A PREROUTING -p tcp --tcp-flags ALL FIN,URG,PSH -m limit --limit 5/minute -j LOG --log-level 4 --log-prefix "NMAP-XMAS SCAN:" --log-tcp-options --log-ip-options
+$IPTABLES -t mangle -A PREROUTING -p tcp --tcp-flags SYN,RST SYN,RST -m limit --limit 5/minute -j LOG --log-level 4 --log-prefix "SYN/RST SCAN:" --log-tcp-options --log-ip-options
+$IPTABLES -t mangle -A PREROUTING -p tcp --tcp-flags SYN,FIN SYN,FIN -m limit --limit 5/minute -j LOG --log-level 4 --log-prefix "SYN/FIN SCAN:" --log-tcp-options --log-ip-options
+#$IPTABLES -A INPUT -m limit --limit 5/minute ! -d ${BROADCAST} -p udp ! --sport 137 ! --dport 137 -j LOG --log-level 4 --log-prefix "rejected: "
+$IPTABLES -A INPUT -p udp -j REJECT --reject-with icmp-port-unreachable
+#$IPTABLES -A INPUT -m limit --limit 5/minute ! -d ${BROADCAST} ! -p udp -j LOG --log-level 4 --log-prefix "rejected: "
+$IPTABLES -A INPUT -p tcp -j REJECT --reject-with tcp-reset
+
+log "Restarting fail2ban."
+/etc/init.d/fail2ban restart
+log "Wait 5 seconds to give f2b the chance to create fw rules in background."
+sleep 5
+
+log "Saving iptables rules to $rulesfile"
+/sbin/iptables-save > ${rulesfile}
+
+/etc/init.d/iptables restart
+
+log "Done"
+#END
