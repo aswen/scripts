@@ -1,0 +1,151 @@
+#!/bin/bash
+# prepare-iptables-debian
+# This script configures the firewall initscripts on Debian servers that lack
+# proper firewall initscripts.
+
+# Copyright (C) 2014-2015 Alexander Swen <alex@swen.nu>
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Alexander Swen
+# Private contact: alex@swen.nu
+
+# CHANGELOG:
+# 2014-09-29  A.Swen  created.
+
+# TODO
+
+# SETTINGS
+export date=$(date +%Y%m%d)
+export me=$(basename $0)
+export mydir=$(dirname $0)
+
+# CONFIG
+rulesfile=/etc/iptables/rules
+
+# FUNCTIONS
+die () {
+  rc=$1
+  shift
+  printf '%s\n' "=====================" >&2
+  printf '%s\n' "==== FATAL ERROR ====" >&2
+  printf '%s\n\n' "=====================" >&2
+  printf '%s\n\n' "$@" >&2
+  cleanup
+  exit $rc
+}
+
+log () { printf '%s %s\n' "$(date +%F' '%T)" "$@"; }
+
+usage () {
+  printf '%s\n' "===============" >&2
+  printf '%s\n' "==== USAGE ====" >&2
+  printf '%s\n\n' "===============" >&2
+  printf '%s\n\n' "Usage: ${me}" >&2
+  printf '%s\n\n' "example: ${me}" >&2
+  exit 1
+}
+
+cleanup () {
+  # Remove temp mount
+  [ -n "${tmpfile}" -f "${tmpfile}" ] && rm -f "${tmpfile}"
+  [ -n "${tmpdir}" -d "${tmpdir}"   ] && rm -f "${tmpdir}"
+}
+
+is_int () { return $(test "$1" -eq "$1" > /dev/null 2>&1); }
+
+# SCRIPT
+[ ${UID} -gt 0 ] && die 1 "only root may do that"
+
+log "Configure Firewall"
+
+# In case of an already existing rulesfile: make a backup
+[ -f "${rulesfile}" ] && cp "${rulesfile}" "${rulesfile}-$(date +%Y%m%d)"
+
+log "Configure firewall initscripts"
+
+# Create configfilesdir
+log "Checking if there's a configdir /etc/iptables."
+[ -d /etc/iptables ] || install -dm 770 -o root -g root /etc/iptables
+
+# Create an initscript
+log "Creating the initscript."
+[ -f /etc/init.d/iptables ] || cat << EOF > /etc/init.d/iptables
+#!/bin/bash
+# originaly written by Simon Richter <sjr@debian.org>
+# 2011-04-19 changed by A.Swen to work better with rules etc
+#
+### BEGIN INIT INFO
+# Provides:          iptables
+# Required-Start:    mountkernfs \$local_fs
+# Required-Stop:     \$local_fs
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Set up iptables rules
+### END INIT INFO
+
+IPTABLES=/sbin/iptables
+IPTABLESRESTORE=/sbin/iptables-restore
+IP6TABLES=/sbin/ip6tables
+DEPMOD=/sbin/depmod
+MODPROBE=/sbin/modprobe
+
+rulesfile=/etc/iptables/rules
+
+[ \${UID} -gt 0 ] && echo only root may do that && exit 1
+
+case "\${1}" in
+  start)
+    [ -f \${rulesfile} ] && \${IPTABLESRESTORE} <\${rulesfile}
+  ;;
+  stop)
+    \${IPTABLES} -P FORWARD ACCEPT
+    \${IPTABLES} -P INPUT ACCEPT
+    \${IPTABLES} -P OUTPUT ACCEPT
+    for table in filter nat mangle raw;do \${IPTABLES} -t \${table} -F;done
+  ;;
+  restart)
+    \$0 stop
+    \$0 start
+  ;;
+  reload)
+    [ -f \${rulesfile} ] && \${IPTABLESRESTORE} <\${rulesfile}
+  ;;
+  status)
+    for table in filter nat mangle raw;do echo table \${table};\${IPTABLES} -t \${table} -nL;echo;done
+  ;;
+  *)
+    echo "Usage: \${0} {start|stop|restart|status}" >&2
+    exit 1
+  ;;
+esac
+
+exit 0
+EOF
+
+# Install the init script
+log "Installing the initscript."
+chmod +x /etc/init.d/iptables
+update-rc.d iptables defaults
+
+log "Checking the initscript (You should see some ls output now)"
+ls -la /etc/init.d/iptables
+log "Listing startscripts for iptables"
+find /etc/rc?.d -name S\*iptables
+
+log "stopping iptables"
+/etc/init.d/iptables stop
+
+log "Done installing the initscript. Don't forget to load rules!"
+# END
