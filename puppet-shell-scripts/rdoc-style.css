@@ -1,0 +1,269 @@
+/* -----------------------------------------------------------------------------
+    HTML
+----------------------------------------------------------------------------- */
+
+body {
+    background: #fff;
+    font: 16px "Helvetica Neue", Helvetica, Arial, sans-serif;
+    line-height: 24px;
+    margin: 0;
+    padding: 0;
+    text-align: center;
+}
+
+/* Headings */
+h1,
+h2,
+h3,
+h4 {
+    margin: 0;
+    color: #8BAE20;
+    background: transparent;
+}
+h1 {
+    font-size: 150%;
+}
+h2,h3,h4 {
+    margin-top: 1em;
+}
+
+/* Links */
+a {
+    color: #D8702C; 
+}
+a:hover {
+    color: #B23C04;
+}
+
+/* Override the base stylesheet's Anchor inside a table cell 
+td > a {
+  background: transparent;
+  color: #039;
+  text-decoration: none;
+}*/
+
+/* and inside a section title 
+.section-title > a {
+  background: transparent;
+  color: #eee;
+  text-decoration: none;
+}*/
+
+/* Code. */
+tt,
+code, 
+pre {
+    background: #E4F2DC;
+    font: 14px "Monaco", "Lucida Console", monospace;
+}
+pre {
+    margin: 15px 0;
+    padding: 15px 5px;
+}
+
+/* -----------------------------------------------------------------------------
+    Structure
+----------------------------------------------------------------------------- */
+
+/* #index {
+    margin: 0;
+    padding: 0;
+} */
+
+/* #index a {
+    margin-left: 0.7em;
+} */
+
+/* #index .section-bar {
+   margin-left: 0px;
+   padding-left: 0.7em;
+   background: #ccc;
+} */
+#index {
+    font-size: 14px;
+    text-align: left;
+    padding: 0 15px;
+}
+    #index .section-bar {
+        font-size: 18px;
+        margin-top: 15px;
+    }
+
+
+#classHeader, #fileHeader, #nodeHeader {
+    background: #8BAE20;
+    border-bottom: 3px solid #6A9211;
+    color: #fff;
+    margin: 0 auto;
+    padding: 20px 0;
+    text-align: left;
+    width: 900px;
+}
+    #classHeader table, #fileHeader table, #nodeHeader table {
+        font-size: 14px;
+        margin-left: 30px;
+    }
+        #classHeader td, #fileHeader td, #nodeHeader td {
+            padding: 3px 8px;
+        }
+    #classHeader a, #fileHeader a, #nodeHeader a {
+        color: #fff;
+    }
+    #fileHeader h1 {
+        margin-left: 38px;
+    }
+    #fileHeader h1,
+    .class-name-in-header {
+        color: #fff;
+        font-size:  30px;
+        font-weight: bold;
+    }
+
+
+#bodyContent,
+#contextContent,
+#validator-badges,
+#includes,
+#section {
+    margin: 0 auto;
+    text-align: left;
+    width: 900px;
+}
+
+#description {
+    background: #efefef;
+    border-bottom: 1px solid #C7C7C7;
+    border-top: 1px solid #C7C7C7;
+    margin: 25px 0;
+    padding: 15px 30px;
+}
+
+#validator-badges {
+    text-align: center;
+}
+    #validator-badges img {
+        border: 0;
+    }
+
+#copyright {
+    color: #333;
+    background: #efefef;
+    font: 0.75em sans-serif;
+    margin-top: 5em;
+    margin-bottom: 0;
+    padding: 0.5em 2em;
+}
+
+
+/* -----------------------------------------------------------------------------
+    Classes
+----------------------------------------------------------------------------- */
+
+table.header-table {
+    color: white;
+}
+
+.type-note {
+    color: #DEDEDE;
+}
+
+.xxsection-bar {
+    background: #eee;
+    color: #333;
+    padding: 3px;
+}
+
+.section-bar {
+   color: #333;
+   border-bottom: 1px solid #BEBEBE;
+   margin: 45px 0 15px 0;
+   padding-bottom: 4px;
+}
+
+.section-title {
+    background: #79a;
+    color: #eee;
+    padding: 3px;
+    margin-top: 2em;
+    border: 1px solid #999;
+}
+
+.top-aligned-row {  vertical-align: top }
+.bottom-aligned-row { vertical-align: bottom }
+
+/* --- Context section classes ----------------------- */
+
+.context-row { }
+.context-item-name { font-family: monospace; font-weight: bold; color: black; }
+.context-item-value { font-size: small; color: #448; }
+.context-item-desc { color: #333; padding-left: 2em; }
+
+/* --- Method classes -------------------------- */
+.method-detail {
+    padding: 0;
+    margin: 45px 0 15px;
+}
+    .method-heading {
+      color: #000;
+      background: #E7E7E7;
+      border-bottom: 1px solid #C0C0C0;
+      padding: 8px 15px;
+    }
+.method-signature { color: black; background: inherit; }
+.method-name { font-weight: bold; }
+.method-args { font-style: italic; }
+
+/* --- Source code sections -------------------- */
+
+a.source-toggle { font-size: 90%; }
+div.method-source-code {
+    background: #262626;
+    color: #ffdead;
+    margin: 1em;
+    padding: 0.5em;
+    border: 1px dashed #999;
+    overflow: hidden;
+}
+
+div.method-source-code pre { color: #ffdead; overflow: hidden; }
+
+/* -----------------------------------------------------------------------------
+    Code browsing
+----------------------------------------------------------------------------- */
+.standalone-code {
+    background: #fff;
+    color: #2A2A2A;
+    text-align: left;
+}
+    .standalone-code pre {
+        background: none;
+    }
+
+.ruby-constant {
+    color: #184C99;
+}
+.ruby-keyword {
+    color: #993700;
+}
+.ruby-ivar {
+    color: #663499;
+}
+.ruby-operator {
+    color: #00ffee;
+}
+.ruby-identifier {
+    color: #2A2A2A;
+}
+.ruby-node {
+    color: #991E62;
+}
+.ruby-comment {
+    color: #C6C6C6; 
+    font-style: italic;
+}
+.ruby-regexp {
+    color: #FFBF00;
+}
+.ruby-value {
+    color: #4D9912;
+}

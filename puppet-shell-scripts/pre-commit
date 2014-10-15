@@ -1,0 +1,75 @@
+#!/bin/bash
+
+# @author David Palma
+# Git pre-commit hook for puppet repositories
+#
+# Pre-commit hooks are called by "git commit" with no arguments.
+# The hook should exit with non-zero status after issuing an
+# appropriate message if it wants to stop the commit.
+#
+# A hook script to check puppet syntax, erb syntax, and style.
+# Dependencies:
+#   - puppet >= 2.7
+#   - puppet-lint
+#
+# Inspired by:
+# http://puppetlabs.com/blog/using-puppet-lint-to-save-yourself-from-style-faux-pas/
+
+# If we don't have puppet, so just exit
+command -v puppet > /dev/null 2>&1 || { echo >&2 "Puppet command not found, exiting."; exit 1;}
+command -v puppet-lint > /dev/null 2>&1 || { echo >&2 "Puppet-lint not found, exiting"; exit 1;}
+
+# Lint options
+LINTFLAGS="--fail-on-warnings --with-filename"
+LINTFLAGS="${LINTFLAGS} --no-class_inherits_from_params_class --no-80chars-check --no-class_parameter_defaults"
+
+declare -a FILES
+FILES="$(git diff --cached --name-only --diff-filter=ACM)"
+echo "Checking integrity of files: $FILES"
+
+for file in ${FILES[@]}
+do
+    extension="${file##*.}"
+    case "$extension" in
+        pp)
+            # puppet syntax check
+            echo -n "Checking puppet syntax ${file}..."
+            puppet parser validate "$file" > /dev/null 2>&1
+            puppet_rc=$?
+            if [ $puppet_rc -ne 0 ] ; then
+                echo "Puppet syntax error in $file" >&2
+                # Provide some useful output about what you did wrong
+                OUTPUT=`puppet parser validate --color false $file 2>/dev/null`
+                echo $OUTPUT | sed "s/\/tmp\/.*:\([0-9]\+\).*/line\ \1/" >&2
+                echo "Puppet returned with exit code $puppet_rc"
+                exit 2
+            fi
+            echo "OK"
+
+            echo -n "Checking puppet style ${file}.... "
+            puppet-lint $LINTFLAGS --log-format "%{KIND} line %{linenumber} - %{message}" "$file" 2> /dev/null
+            lint_rc=$?
+            if [ $lint_rc -ne 0 ]; then
+                echo "Puppet-lint error in $file" >&2
+                echo "Puppet-lint returned with exit code $lint_rc"
+                exit 2
+            fi
+            echo "OK"
+        ;;
+        erb)
+            # syntax check templates - this doesn't catch a lot of mistakes,
+            # but it should catch gross mistakes
+            echo -n "Checking erb sytax....... "
+            erb -x -T - "$file" | ruby -c > /dev/null 2>&1
+            erb_rc=$?
+            if [ $erb_rc -ne 0 ] ; then
+                echo "ERB syntax error in $file" >&2
+                echo "ERB returned with exit code $erb_rc"
+                exit 2
+            fi
+            echo "OK"
+        ;;
+    esac
+done
+
+exit 0
