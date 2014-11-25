@@ -46,7 +46,7 @@ usage () {
   printf '%s\n\n' "===============" >&2
   printf '%s\n' "Usage: ${me} " >&2
   printf '%s\n\n' "example: ${me} " >&2
-  1
+  exit 1
 }
 get_options () {
   [ $# -gt 0 ]||usage
