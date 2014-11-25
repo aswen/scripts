@@ -79,7 +79,7 @@ log_msg () {
 
 # SCRIPT
 before_total="$(date +%s)"
-[ ${UID} -gt 0 ] && die 0 only root may do that
+[ ${UID} -gt 0 ] && die 0 "Only root may do that."
 log_msg "$(date) started ${me}"
 # get_options $@
 
