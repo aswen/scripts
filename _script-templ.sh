@@ -33,29 +33,24 @@ mydir=$(dirname $0)
 die () {
   rc=$1
   shift
-  echo "==========================">&2
-  echo "====    FATAL  ERROR  ====" >&2
-  echo "==========================">&2
-  echo "" >&2
-  echo $@ >&2
+  printf '%s\n' "=====================" >&2
+  printf '%s\n' "==== FATAL ERROR ====" >&2
+  printf '%s\n\n' "=====================" >&2
+  printf '%s\n\n' "$@" >&2
   exit $rc
 }
 
 usage () {
-  echo "==========================" >&2
-  echo "====       USAGE      ====" >&2
-  echo "==========================" >&2
-  echo "" >&2
-  echo "Usage: ${me} <userfile>" >&2
-  echo "" >&2
-  echo "example: ${me} /tmp/userlist" >&2
-  echo "" >&2
-  exit 1
+  printf '%s\n' "===============" >&2
+  printf '%s\n' "==== USAGE ====" >&2
+  printf '%s\n\n' "===============" >&2
+  printf '%s\n' "Usage: ${me} " >&2
+  printf '%s\n\n' "example: ${me} " >&2
+  1
 }
-
 get_options () {
   [ $# -gt 0 ]||usage
-  while getopts "s:d:D:u:g:" opt;do
+  while getopts "u:" opt;do
     case ${opt} in
       u) export user=`echo ${OPTARG}` ;;
       *) usage;;
@@ -64,15 +59,17 @@ get_options () {
 }
 
 duration () {
-  before=$1
-  after="$(date +%s)"
-  elapsed="$(expr $after - $before)"
-  hours=$(($elapsed / 3600))
-  elapsed=$(($elapsed - $hours * 3600))
-  minutes=$(($elapsed / 60))
-  seconds=$(($elapsed - $minutes * 60))
+  local before=$1
+  local after="$(date +%s)"
+  local elapsed="$(expr $after - $before)"
+  local hours=$(($elapsed / 3600))
+  local elapsed=$(($elapsed - $hours * 3600))
+  local minutes=$(($elapsed / 60))
+  local seconds=$(($elapsed - $minutes * 60))
   time_running="${hours}:${minutes}:${seconds}"
 }
+
+log () { printf '%s %s\n' "$(date +%F' '%T)" "$@"; }
 
 log_msg () {
   duration ${before_total}
@@ -88,6 +85,6 @@ log_msg "$(date) started ${me}"
 
 
 duration ${before_total}
-log_msg "Total time taken: ${hours}:${minutes}:${seconds}"
+log_msg "Total time taken: ${time_running}"
 log_msg "$(date) finished"
 # END
