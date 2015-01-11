@@ -1,0 +1,151 @@
+#!/bin/bash
+# test_hdd_perf
+# executes various tests against a given disk
+
+# Copyright (C) 2014-2015 Alexander Swen <alex@swen.nu>
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Alexander Swen
+# Private contact: alex@swen.nu
+
+# CHANGELOG:
+# 2010-03-25 A.Swen created.
+# 2014-03-21 A.Swen big update:
+#                   - replace die and usage output
+#                   - add outputfile
+#                   - add checks to see if used tools are available
+#                   - add duration
+
+# TODO
+# this script might want to get some new tools like
+# - sysbench
+# - fsmark
+# - a simple dd from dev/zero to a file on the filesystem
+
+# SETTINGS
+date=$(date +%Y%m%d)
+me=$(basename $0)
+mydir=$(dirname $0)
+resultsfile=$(date +%Y%m%d.%H%M%S)-harddisk_performance_test_results
+
+# FUNCTIONS
+die () {
+  rc=$1
+  shift
+  echo "==========================">&2
+  echo "====    FATAL  ERROR  ====" >&2
+  echo "==========================">&2
+  echo "" >&2
+  echo $@ >&2
+  exit $rc
+}
+
+usage () {
+  echo "==========================" >&2
+  echo "====       USAGE      ====" >&2
+  echo "==========================" >&2
+  echo "" >&2
+  echo "" >&2
+  echo "Usage: ${me} [-s \"testfilesize in Mb\"] [-d dirname] [-D diskdevicename] [-u uid] [-g gid] [-n <testname>]" >&2
+  echo "All parameters except -s are obligatory" >&2
+  echo "" >&2
+  echo "example: ${me} -s \"16000\" -d /data -D /dev/sda -u 1000 -g 500 -n 'raid1 via mdraid'" >&2
+  echo "" >&2
+  exit 1
+}
+
+get_options () {
+  [ $# -gt 0 ]||usage
+  while getopts "s:d:D:u:g:n:" opt;do
+    case ${opt} in
+      u) export user=`echo ${OPTARG}` ;;
+      g) export group=`echo ${OPTARG}` ;;
+      s) export size=`echo ${OPTARG}` ;;
+      d) export dir=`echo ${OPTARG}` ;;
+      D) export disk=`echo ${OPTARG}` ;;
+      n) export testname=`echo ${OPTARG}` ;;
+      *) usage;;
+    esac
+  done
+}
+
+duration () {
+  before=$1
+  after="$(date +%s)"
+  elapsed="$(expr $after - $before)"
+  hours=$(($elapsed / 3600))
+  elapsed=$(($elapsed - $hours * 3600))
+  minutes=$(($elapsed / 60))
+  seconds=$(($elapsed - $minutes * 60))
+  time_running="${hours}:${minutes}:${seconds}"
+}
+
+log_msg () {
+  duration ${before_total}
+  message="$1"
+  echo "${time_running} $1"|tee -a ${resultsfile}
+}
+
+log () { printf '%s %s\n' "$(date +%F' '%T)" "$@"; }
+
+testperf () {
+  log "We set uid and gid for bonnie++ to ${user} and ${group}"
+  log "Current ownership: $(ls -al ${dir}/.|head -2|tail -1|awk '{print $3" "$4}')"
+  chown ${user}:${group} ${dir}
+
+  log "DD a file of ${size}mb."
+  time { dd if=/dev/zero of=${dir}/t.zero count=${size} bs=1024000 ;sync; }
+  [ -f $dir/t.zero ] && rm $dir/t.zero
+
+  log "Hdparm"
+  time hdparm -Tt ${disk}
+  log " "
+
+  log "Bonnie++ with writebuffering enabled"
+  time bonnie++ -d "${dir}" -u ${user}:${group} -n20
+  log " "
+
+  log "Bonnie++ with writebuffering disabled, (fsync() after every write)"
+  time bonnie++ -d "${dir}" -u ${user}:${group} -n20 -b
+  log " "
+}
+
+# SCRIPT
+before_total="$(date +%s)"
+[ ${UID} -gt 0 ] && die 0 only root may do that
+[ -x /usr/sbin/bonnie++ ] || die 1 bonnie++ not found
+[ -x /sbin/hdparm ] || die 1 hdparm not found
+get_options $@
+[ -n "${testname}" ] && resultsfile="${resultsfile}-${testname}"
+log "Started ${me} test ${testname}"
+
+[ -z "${user}" -o -z "${group}" -o -z "${dir}" -o -z "${disk}" ] && usage
+[ -d "${dir}" ] ||die 2 "Dir ${dir} not found"
+
+if [ -z "${size}" ];then
+  ram=$(free -m|awk '/Mem/ {print $2}')
+  size=$((2*ram))
+  log "RAM is ${ram}Mb and we use a file size of 2x${ram}=${size}Mb"
+
+fi
+time testperf |tee ${resultsfile}
+
+log "Results saved in ${resultsfile}"
+
+
+duration ${before_total}
+log "Total time taken: ${hours}:${minutes}:${seconds}"
+log "Finished"
+# END
