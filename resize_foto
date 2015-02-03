@@ -115,8 +115,8 @@ esac
 
 
 case ${zip} in
-  yes) nautilus "${target_dir}"&;;
-  no) nautilus "${target_dir}/${dir_name}"&;;
+  yes) nautilus --no-desktop "${target_dir}"&;;
+  no) nautilus --no-desktop "${target_dir}/${dir_name}"&;;
 esac
 
 exit 0
