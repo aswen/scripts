@@ -81,26 +81,24 @@ time_to_full () {
 }
 
 notify () {
-  DISPLAY=:0.0
-  XAUTHORITY=/home/alex/.Xauthority
-  message=$(cat << EOF_MSG
+  local message=$(cat << EOF_MSG
 Batterylevel is $capacity and $status.
 Estimated time to empty: $time_to_empty.
 EOF_MSG
 )
+  log "Trying to warn the user."
   case $1 in
     warn)
-      ttl=60000
-      urgency=normal
+      local ttl=60000
+      local urgency=normal
       ;;
     crit)
-      ttl=120000
-      urgency=critical
+      local ttl=120000
+      local urgency=critical
       [ $beep == true ] && try_beep
       ;;
     *) die 4 "You should use 'warn' or 'crit' as \$1 in the notify function.";;
   esac
-  log "Trying to warn the user."
   /usr/bin/notify-send --expire-time=$ttl --urgency=$urgency "Batery Low Warning" "$message"
 }
 
