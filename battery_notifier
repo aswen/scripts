@@ -76,6 +76,10 @@ time_to_empty () {
   upower -i /org/freedesktop/UPower/devices/battery_BAT0|awk '/time to empty:/ {print $4" "$5}'
 }
 
+time_to_full () {
+  upower -i /org/freedesktop/UPower/devices/battery_BAT0|awk '/time to full:/ {print $4" "$5}'
+}
+
 notify () {
   DISPLAY=:0.0
   XAUTHORITY=/home/alex/.Xauthority
@@ -125,13 +129,15 @@ get_battery_info
 [ -n "$capacity" ] || die 3 "Script failed to detect batterycapacity."
 is_int $capacity || die 3 "Script didn't get an integer from the capacityfile."
 
-log "The battery is $status and at ${capacity}%. Estimated time to empty: $time_to_empty."
 if [[ "$status" == "Discharging" ]];then
-  if [[ $capacity -lt $crit ]];then
+  log "The battery is $status and at ${capacity}%. Estimated time to empty: $time_to_empty."
+  if [[ $capacity -le $crit ]];then
     notify crit
-  elif [[ $capacity -lt $warn ]];then
+  elif [[ $capacity -le $warn ]];then
     notify warn
   fi
+else
+  log "The battery is $status and at ${capacity}%. Estimated time to full: $(time_to_full)."
 fi
 
 # END
