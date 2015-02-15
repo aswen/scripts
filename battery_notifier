@@ -38,6 +38,8 @@
 #   env | grep DBUS_SESSION_BUS_ADDRESS > $HOME/.dbus/Xdbus
 #   echo 'export DBUS_SESSION_BUS_ADDRESS' >> $HOME/.dbus/Xdbus
 #   chmod 600 $HOME/.dbus/Xdbus
+#
+# If beep is installed there will be a beep when capacity is critical.
 
 # SETTINGS
 date=$(date +%Y%m%d)
@@ -45,6 +47,10 @@ me=$(basename $0)
 mydir=$(dirname $0)
 warn=25
 crit=10
+beep=true
+beep_freq=100
+beep_time=200
+beep_times=3
 
 
 # FUNCTIONS
@@ -86,11 +92,17 @@ EOF_MSG
     crit)
       ttl=120000
       urgency=critical
+      [ $beep == true ] && try_beep
       ;;
     *) die 4 "You should use 'warn' or 'crit' as \$1 in the notify function.";;
   esac
   log "Trying to warn the user."
   /usr/bin/notify-send --expire-time=$ttl --urgency=$urgency "Batery Low Warning" "$message"
+}
+
+try_beep () {
+  [ -x /usr/bin/beep ] || return
+  beep -f $beep_freq -l $beep_time -r $beep_times -d 200
 }
 
 # SCRIPT
