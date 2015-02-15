@@ -1,0 +1,125 @@
+#!/bin/bash
+# battery_notifier
+# Checks battery level and sends notifiers when low and discharging
+
+# Copyright (C) 2014-2015 Alexander Swen <alex@swen.nu>
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Alexander Swen
+# Private contact: alex@swen.nu
+
+# CHANGELOG:
+# 2015-02-15	A.Swen	created.
+
+# INSTALLATION
+
+# This script needs three preparationscteps:
+# 1. Install notify-send.
+# 2. You need to tell cron to run this every now and then.
+# like: */10 * * * * [ -x $HOME/bin/battery_notifier ] && $HOME/bin/battery_notifier >> battery_notifier.log 2>&1
+# 3. You need to set the DBUS_SESSION_BUS_ADDRESS variable.
+# By default cron does not have access to the variable. To remedy this put the
+# following script somewhere and call it when the user logs in, For example put
+# this in ~/.xprofile:
+#
+#   [ -d $HOME/.dbus ] || mkdir $HOME/.dbus
+#   env | grep DBUS_SESSION_BUS_ADDRESS > $HOME/.dbus/Xdbus
+#   echo 'export DBUS_SESSION_BUS_ADDRESS' >> $HOME/.dbus/Xdbus
+#   chmod 600 $HOME/.dbus/Xdbus
+
+# SETTINGS
+date=$(date +%Y%m%d)
+me=$(basename $0)
+mydir=$(dirname $0)
+warn=25
+crit=10
+
+
+# FUNCTIONS
+die () {
+  shift
+  printf '%s\n' "=====================" >&2
+  printf '%s\n' "==== FATAL ERROR ====" >&2
+  printf '%s\n\n' "=====================" >&2
+  printf '%s\n\n' "$@" >&2
+  exit $rc
+}
+
+log () { printf '%s %s\n' "$(date +%F' '%T)" "$@"; }
+is_int () { return $(test "$1" -eq "$1" > /dev/null 2>&1); }
+
+get_battery_info () {
+  status=$(cat /sys/class/power_supply/BAT0/status)
+  capacity=$(cat /sys/class/power_supply/BAT0/capacity)
+  time_to_empty="$(time_to_empty)"
+}
+
+time_to_empty () {
+  upower -i /org/freedesktop/UPower/devices/battery_BAT0|awk '/time to empty:/ {print $4" "$5}'
+}
+
+notify () {
+  DISPLAY=:0.0
+  XAUTHORITY=/home/alex/.Xauthority
+  message=$(cat << EOF_MSG
+Batterylevel is $capacity and $status.
+Estimated time to empty: $time_to_empty.
+EOF_MSG
+)
+  case $1 in
+    warn)
+      ttl=60000
+      urgency=normal
+      ;;
+    crit)
+      ttl=120000
+      urgency=critical
+      ;;
+    *) die 4 "You should use 'warn' or 'crit' as \$1 in the notify function.";;
+  esac
+  log "Trying to warn the user."
+  /usr/bin/notify-send --expire-time=$ttl --urgency=$urgency "Batery Low Warning" "$message"
+}
+
+# SCRIPT
+is_int $warn || die 1 "Warn must be an integer."
+is_int $crit || die 1 "Crit must be an integer."
+[ $warn -lt $crit ] && die 1 "Warn should be greater than crit."
+
+# Cron needs to know where to send the message to.
+[ -f $HOME/.dbus/Xdbus ]&& source $HOME/.dbus/Xdbus || die 1 "$HOME/.dbus/Xdbus not found"
+
+# Check if notify-send is installed.
+[ -x /usr/bin/notify-send ]||die 2 "Notify-send not installed."
+
+# Check if batteryinfo is available
+[ -f /sys/class/power_supply/BAT0/capacity ]||die 2 "Dunno where to find battery info. /sys/class/power_supply/BAT0/capacity not found."
+
+log "Checking batterystatus."
+get_battery_info
+[ -n "$status" ] || die 3 "Script failed to detect batterystatus."
+[ -n "$capacity" ] || die 3 "Script failed to detect batterycapacity."
+is_int $capacity || die 3 "Script didn't get an integer from the capacityfile."
+
+log "The battery is $status and at ${capacity}%. Estimated time to empty: $time_to_empty."
+if [[ "$status" == "Discharging" ]];then
+  if [[ $capacity -lt $crit ]];then
+    notify crit
+  elif [[ $capacity -lt $warn ]];then
+    notify warn
+  fi
+fi
+
+# END
