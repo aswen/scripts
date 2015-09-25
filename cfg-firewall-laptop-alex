@@ -1,287 +1,528 @@
 #!/bin/bash
-# cfg-firewall-laptop-alex
-# This script configures the firewall of Alex' laptop
-
-# Copyright (C) 2014-2015 Alexander Swen <alex@swen.nu>
-
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
-# (at your option) any later version.
-
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 # Alexander Swen
-# Private contact: alex@swen.nu
 
-# CHANGELOG:
-# 29-11-2006  A.Swen  created.
-# 19-04-2011  A.Swen  configures firewall for debian servers
-# 14-12-2011  A.Swen  configures firewall for moves servers
-# 22-12-2011  A.Swen  reworked a bit to keep open sessions open and added at job to stop iptables in 2 minutes
-#                     in case something goes wrong and the executer of the script loses connection...
-# 02-01-2012  A.Swen  added a fil2ban restart before iptables-save in order to get the fail2ban rules in the rulesfile
-# 11-07-2013  A.Swen  modified for my laptop
-# 14-10-2014  A.Swen  pretify script
-
-# TODO
+# What this script does:
+# This script builds up a set of iptables rules. Once that's done these will be
+# safed to a rulesfile that will be used when the iptables initscript runs with
+# "start" or "restart" as an argument.
+#
+# First the script build up a skeleton firewall dropping anything. Then it runs
+# all scripts in the /etc/iptables/rules.d dir to create specific rules. This
+# way any puppet module can create it's own specific rules. In most cases these
+# rules will be like "allow port 80 from world" or similar.
+# To allow for ordering in these scripts it's possible to rely on standard shell
+# globbing order (/etc/iptables/rules.d/* will be ordered by bash) but it's
+# common practice to choose a name that starts with a four digit number to have
+# the order a bit more visible. However, at the time of this writing there are
+# no examples where this numbering makes any difference in the packets fate.
+#
+# Different chains
+# There will be a number of chains once this script is done doing it's magic.
+# This way packets can be filtered based on their own specific characteristics.
+# Most important is the "Reject" chain. This functions as a kind of hub from
+# where packets are (jump) sent to other chains. This should not be confused
+# with the "REJECT" jump target and the "reject" chain. The latter is a filter
+# before the actual reset will happen. This way each packet that's about to be
+# rejected will be logged and REJECTed on it's own way.
+# A good example of the use of these different chains is the "Multicast" chain.
+# That basicly DROPS every multicast packet that comes in. For some cases that's
+# not what you want. Simply create a rule that Inserts before the log/drop rules
+# in that chain and let these packets jump to ACCEPT or RETURN:
+#
+# /sbin/iptables -I Multicast 1 -i bond0 -p vrrp -s 10.120.3.1 -d 224.0.0.18 \
+#   -m comment --comment "Allow VRRP from STPSTLAN" -j ACCEPT
+#
+# Creating files in /etc/iptables/rules.d
+# The ::iptables::rule defined type is an erb template that creates a file in
+# the rules.d dir. It has an iptables line in it that appends a rule to the
+# INPUT chain. This method works well in most cases where we just want to open a
+# port for one or more hosts. Some situations require a more specific approach.
+# In those cases you can choose to use Puppet's file resource to drop a file in
+# the rules.d dir. From here anything you like is possible.
+#
+# Chains that are created by default:
+# Reject              - This is the chain that acts as a kind of filter broker.
+#                       It sends igmp protocol packets to the Igmp chain while
+#                       icmp packets are sent to the Icmp chain. Most others
+#                       will be sent to a list of other filterchains. Each time
+#                       the packets should either get dealt with or be returned
+#                       to this chain. Packets that make it through these basic
+#                       filters are sent back to the INPUT chain.
+# Multicast           - Filters multicast type packets.
+#                       Packets that reach the end of this chain are RETURNED to
+#                       the Reject chain for further inspection.
+# Broadcast           - Filters broadcast type packets. Normally DROPs all
+#                       broadcasts. It makes no sense to REJECT broadcasts that
+#                       we're not interested in. The packets that survive this
+#                       masacre are sent to the Multicast chain.
+# Igmp                - Filters igmp type packets.
+#                       Packets that reach the end of chain are DROPPED. It
+#                       makes no sense to REJECT multicasts that we're not
+#                       interested in.
+# Invalid-source      - This chain looks into the source of the packet. It will
+#                       DROP anything that's comming from a non-routable source.
+#                       There are a few exceptions. Packets from our own
+#                       networks that arrive on our internal interface are
+#                       Returned back to the Reject chain. The default is to
+#                       DROP because a REJECT answer wouldn't make it to the
+#                       bogus source address.
+#                       Packets that reach the end of this chain are RETURNED to
+#                       the Reject chain for further inspection.
+# Invalid-destination - Similar to the Invalid-source chain this looks at the
+#                       destination of a packet. Packets arriving on our
+#                       internal interface with a destination that's not
+#                       possible should be DROPped because these can't be valid
+#                       in any way. Allthough it would be possible to sent a
+#                       polite REJECT here we don't do that because we don't
+#                       want to spent any longer on these, obviously falsive,
+#                       packets.
+#                       Packets that reach the end of this chain are RETURNED to
+#                       the Reject chain for further inspection.
+# Invalid-packet      - This checks for several known false packet
+#                       characteristics like X-mas tree packets etc. This chain
+#                       contains one rule that Invalidates a lot of packets on
+#                       our loadbalancers and therefore the last rule is
+#                       commented at the moment.
+#                       Packets that reach the end of this chain are RETURNED to
+#                       the Reject chain for further inspection.
+# Notsyn              - This validates packets with a NEW state if they also
+#                       have a SYN state. These packets will be DROPped as they
+#                       are most likely part of a DDOS attack and sending a
+#                       REJECT would cost resources that are likely to be
+#                       exhausted during this kind of attack.
+#                       Packets that reach the end of this chain are RETURNED to
+#                       the Reject chain for further inspection.
+# Smurf               - Protects against Smurf attacks by dropping packets with
+#                       a broadcast as the source (Shorewall method). Smurf
+#                       normally attacks ICMP and that's filtered seperately.
+#                       Packets that reach the end of this chain are RETURNED to
+#                       the Reject chain for further inspection.
+# Icmp                - This drops nearly all ICMP packets except for echo req.
+#                       All other ICMP traffic should be either accepted by
+#                       related/established rule or dropped.
+# reject              - This is the "killing field". Every packets that comes
+#                       here will be LOGged and then REJECTed in a way that fits
+#                       that packet.
+#
+# Logging
+# At the moment this script allows for three loglevels:
+# - 0: Only logging to logstash.log which is intended to send logs with limited
+#      log-prefix (because Elastic breaks this into unusable pieces,
+#      https://www.elastic.co/guide/en/elasticsearch/reference/current/analysis-word-delimiter-tokenfilter.html).
+#      Logstash.log is emptied by logrotate daily.
+#      This is the default loglevel set in Puppet.
+# - 1: Same as loglevel 0 plus: logs the most DROPS and REJECT that either
+#      identify attempts to disrupt anything or informs about traffic that's
+#      being refused while it should be accepted.
+#      This logs to iptables.log and can be used to easy analyse by what rule
+#      packets are dropped/rejected.
+#      After setting the level to 1 this script needs to be re-run and Puppet
+#      needs to be disabled or the loglevel needs to be set in Puppet.
+#      Iptables.log is rotated daily.
+# - 2: Same as 1, plus this also logs packets that we DROP and normally don't
+#      care about, like Broadcasts, UPnP etc.
+#      If you enable this make sure you've got plenty of diskspace in /var/log.
+#
+# Some logs are filtered through the limit module to avoid logflooding attacks.
+# A (limited) logfilter is added to the FORWARD chain on the loadbalancers to
+# give us an idea of what our internal boxes are doing on Interwebz. This is a
+# basis upon which more finegrained filtering will be done on the Forward chain
+# in the future.
+#
+# log-prefixes:
+# The max length for a log-prefix is 29 characters. Any more characters are
+# ignored by iptables.
+# To make sure rsyslog redirects iptables messages to the appropriate logfiles
+# (and avoid logging to syslog ánd kernel.log ánd messages) we have the
+# following "rules" in place:
+# Messages that should be sent to logstash are prefixed with 'IPTABLES_LS: <FATE
+# >: ' and to have them properly searchable in elastic FATE (without <>) should
+# be only one word describing what will happen to the packet. (e.g. 'DROP',
+# 'REJECT' etc).
+# Messages intended for local debugging should contain a prefix that informs
+# about which rule it's related to. This is to be able to quickly find out why
+# certain packets are dropped/rejected. The prefix for these messages looks like
+# 'IPTABLES: <RULEDESCR>: ' where RULEDESCR (without <>) should be replaced with
+# something that clearly identifies what rule this logmessage is related to.
+#
+# For convenience there's a $IPT_LOG variable that replaces the long lines:
+# -j LOG --log-tcp-options --log-ip-options --log-prefix
+# So, you can just use like so:
+# $IPTABLES [things] $IPT_LOG "Just drop this stuff"
 
 # SETTINGS
 export date=$(date +%Y%m%d)
 export me=$(basename $0)
 export mydir=$(dirname $0)
-
-# CONFIG
-
-# Type sets the type of this server. Based on this type a subset of the
-# functions will be executed. It's a basic way of creating profiles.
-type=laptop
+tmp_dir=${mydir}
 rulesfile=/etc/iptables/rules
+rulesd=/etc/iptables/rules.d
+
+export LOGLEVEL=1
+
+# Standardize log
+export IPT_LOG="-j LOG --log-tcp-options --log-ip-options --log-prefix"
 
 # FUNCTIONS
-die () {
-  rc=$1
-  shift
-  printf '%s\n' "=====================" >&2
-  printf '%s\n' "==== FATAL ERROR ====" >&2
-  printf '%s\n\n' "=====================" >&2
-  printf '%s\n\n' "$@" >&2
-  cleanup
-  exit $rc
-}
-
 log () { printf '%s %s\n' "$(date +%F' '%T)" "$@"; }
 
-usage () {
-  printf '%s\n' "===============" >&2
-  printf '%s\n' "==== USAGE ====" >&2
-  printf '%s\n\n' "===============" >&2
-  printf '%s\n\n' "Usage: ${me}" >&2
-  printf '%s\n\n' "example: ${me}" >&2
-  exit 1
-}
-
-cleanup () {
-  [ -n "${tmpfile}" -a -f "${tmpfile}" ] && rm -f "${tmpfile}"
-  [ -n "${tmpdir}" -a -d "${tmpdir}"   ] && rm -f "${tmpdir}"
-}
-
-is_int () { return $(test "$1" -eq "$1" > /dev/null 2>&1); }
-
 # SCRIPT
-[ ${UID} -gt 0 ] && die 0 only root may do that
-
 log "Configure Firewall"
 
-# Create a backup first
-log "Creating backup of existing firewall config. (if any)"
-[ -f /etc/sysconfig/iptables ] && cp /etc/sysconfig/iptables /etc/sysconfig/iptables-$(date +%F-%T)
+log "Creating backup of existing firewall config. (if any)."
+[ -f "${rulesfile}" ] && cp "${rulesfile}" "${rulesfile}-$(date +%Y%m%d)"
 
 IPTABLES=/sbin/iptables
 IP6TABLES=/sbin/ip6tables
-DEPMOD=/sbin/depmod
 MODPROBE=/sbin/modprobe
 
-log "Stopping current firewall."
-service iptables stop
-
-log "Add config of mod recent module."
-[ -f /etc/modprobe.d/iptables_mod_recent.conf ] || echo "options ipt_recent ip_list_tot=1000" >> /etc/modprobe.d/iptables_mod_recent.conf
-$MODPROBE ipt_recent
-
 log "Flush all current rules and chains."
+# standaard policies (input gaat pas na related accept op drop)
 $IPTABLES -F
-$IPTABLES -A INPUT -p TCP ! --syn -m state --state NEW -m recent --set -j DROP
-$IPTABLES -A INPUT -p ALL -m state --state ESTABLISHED,RELATED -j ACCEPT
+$IPTABLES -X
+for table in filter nat mangle raw;do
+  $IPTABLES -t $table -F
+  $IPTABLES -t $table -X
+done
 
-log "Set standard policy DROP to Input, Forward and Output chain."
-[ "$($IPTABLES -nL|awk '/Chain/ && /RH-Firewall-1-INPUT/ {print $2}')" = "RH-Firewall-1-INPUT" ] && $IPTABLES -X RH-Firewall-1-INPUT
+log "Keepalive existing connections."
+$IPTABLES -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -m comment --comment "Accept related, established without further delay" -j ACCEPT
+log "Set DROP policies to INPUT and FORWARD chains."
+$IPTABLES -P INPUT DROP
 $IPTABLES -P FORWARD DROP
-IPTABLES -P INPUT DROP
+$IPTABLES -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -m comment --comment "Accept related, established without further delay" -j ACCEPT
+log "Set ACCEPT policy to the OUTPUT chain." # This needs to be changed in the future.
 $IPTABLES -P OUTPUT ACCEPT
+$IPTABLES -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -m comment --comment "Accept related, established without further delay" -j ACCEPT
 
-log "Adding DDos and Brute-force chains."
-[ "$($IPTABLES -nL|awk '/Chain/ && /BRUTE-FORCE/ {print $2}')" = "BRUTE-FORCE" ] || $IPTABLES -N BRUTE-FORCE
-[ "$($IPTABLES -nL|awk '/Chain/ && /DDOS/ {print $2}')" = "DDOS" ] || $IPTABLES -N DDOS
-
-#ip6 hebben we niet
+# Ip6 hebben we nog niet maar we accepteren wel ip6 op localhost.
+# Want dat wordt wel gebruikt.
+log "Disable ALL IP6 except on lo."
+$IP6TABLES -A INPUT -i lo -m comment --comment "Accept ip6 on lo because some programs already use this on lo" -j ACCEPT
 $IP6TABLES -P INPUT DROP
 
 # loopback mag wel
-$IPTABLES -A INPUT -i lo -j ACCEPT
+log "Allow anything on lo."
+$IPTABLES -A INPUT  -i lo -m comment --comment "Accept anything on lo interface" -j ACCEPT
+$IPTABLES -A OUTPUT -o lo -m comment --comment "Accept anything on lo interface" -j ACCEPT
 
-log "Validate source and destination traffic."
-[ "$($IPTABLES -nL|awk '/Chain/ && /VALID-SRC/ {print $2}')" = "VALID-SRC" ] || $IPTABLES -N VALID-SRC
-[ "$($IPTABLES -nL|awk '/Chain/ && /VALID-DST/ {print $2}')" = "VALID-DST" ] || $IPTABLES -N VALID-DST
+#####################
+# reject
+#####################
+log "create a reject chain that rejects everything in a polite way."
+[ "$($IPTABLES -nL|awk '/Chain/ && /reject/ {print $2}')" = "reject" ] || $IPTABLES -N reject
 
-log "Adding filter rules to the Valid-src and dst chains."
-# Normally we do not accept any traffic from RFC-1918 sources or to those.
-# https://nl.wikipedia.org/wiki/RFC_1918.
-# however, this is a laptop and that should accept all that...
-$IPTABLES -A VALID-SRC -s 224.0.0.0/4 -m recent --set -j DROP
-$IPTABLES -A VALID-SRC -s 240.0.0.0/5 -m recent --set -j DROP
-$IPTABLES -A VALID-SRC -s 127.0.0.0/8 -m recent --set -j DROP
-$IPTABLES -A VALID-SRC -d 127.0.0.0/8 -m recent --set -j DROP
-$IPTABLES -A VALID-SRC -s 0.0.0.0/8 -m recent --set -j DROP
-$IPTABLES -A VALID-SRC -d 255.255.255.255 -m recent --set -j DROP
-$IPTABLES -A VALID-SRC -s 169.254.0.0/16 -m recent --set -j DROP
-$IPTABLES -A VALID-DST -d 224.0.0.0/4 -m recent --set -j DROP
+# This rule is added to allow for short-lived http sessions that don't close-wait politely.
+# https://ask.wireshark.org/questions/13986/why-tcp-reset-sent-after-receive-finack-packet
+log "Ignore ACK packets as they can be normal behaviour."
+$IPTABLES -A reject -p tcp --tcp-flags ALL ACK -j DROP
 
-log "Inp/outp to valid."
-$IPTABLES -A INPUT  -i eth0 -j VALID-SRC
-$IPTABLES -A OUTPUT -o eth0 -j VALID-DST
-$IPTABLES -A INPUT  -i wlan0 -j VALID-SRC
-$IPTABLES -A OUTPUT -o wlan0 -j VALID-DST
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A reject -p tcp $IPT_LOG "IPTABLES: default tcpreject: "
+$IPTABLES -A reject -p tcp -m comment --comment "Reject TCP packets with RST" -j REJECT --reject-with tcp-reset
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A reject -p udp $IPT_LOG "IPTABLES: default udpreject: "
+$IPTABLES -A reject -p udp -m comment --comment "Reject UDP packets with icmp-port-unreachable" -j REJECT --reject-with icmp-port-unreachable
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A reject $IPT_LOG "IPTABLES: default reject: "
+$IPTABLES -A reject -m comment --comment "Reject anything else with icmp-host-prohibited" -j REJECT --reject-with icmp-host-prohibited
 
+
+#####################
+# Multicast
+#####################
+log "Create a Multicast chain."
+[ "$($IPTABLES -nL|awk '/Chain/ && /Multicast/ {print $2}')" = "Multicast" ] || $IPTABLES -N Multicast
+# Any multicast traffic that should be accepted should be inserted before here.
+# An example. Vrrp traffic should be accepted:
+# /sbin/iptables -I Multicast 1 -i bond0 -p vrrp -s 10.120.3.1 -d 224.0.0.18 -m comment --comment "Allow VRRP from STPSTLAN" -j ACCEPT
+[ $LOGLEVEL -ge 2 ] && $IPTABLES -A Multicast -m addrtype --dst-type MULTICAST $IPT_LOG "IPTABLES: Multicast: "
+$IPTABLES -A Multicast -m addrtype --dst-type MULTICAST -m comment --comment "Drop multicast addresstype packets" -j DROP
+
+[ $LOGLEVEL -ge 2 ] && $IPTABLES -A Multicast -d 224.0.0.0/4 $IPT_LOG "IPTABLES: Mcast 224.0.0.0/4: "
+$IPTABLES -A Multicast -d 224.0.0.0/4 -m comment --comment "Drop packets for multicast network" -j DROP
+
+
+#####################
+# Broadcast
+#####################
+log "Create a Broadcast chain."
+[ "$($IPTABLES -nL|awk '/Chain/ && /Broadcast/ {print $2}')" = "Broadcast" ] || $IPTABLES -N Broadcast
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Broadcast -m addrtype --src-type BROADCAST $IPT_LOG "IPTABLES: (source) Brcast: "
+$IPTABLES -A Broadcast -m addrtype --src-type BROADCAST -m comment --comment "Drop source BROADCASTS" -j DROP
+
+[ $LOGLEVEL -ge 2 ] && $IPTABLES -A Broadcast -m addrtype --dst-type BROADCAST $IPT_LOG "IPTABLES: Broadcast: "
+$IPTABLES -A Broadcast -m addrtype --dst-type BROADCAST -m comment --comment "Drop destination BROADCASTS" -j DROP
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Broadcast -m addrtype --dst-type ANYCAST $IPT_LOG "IPTABLES: Anycast: "
+$IPTABLES -A Broadcast -m addrtype --dst-type ANYCAST -m comment --comment "Drop ANYCAST packets" -j DROP
+$IPTABLES -A Broadcast -m addrtype --dst-type MULTICAST -m comment --comment "Send MULTICAST packets to the Multicast chain" -j Multicast
+$IPTABLES -A Broadcast -d 224.0.0.0/4 -m comment --comment "Send MULTICAST packets to the Multicast chain" -j Multicast
+
+
+#####################
+# Igmp
+#####################
+log "Create an Igmp chain."
+# Any Igmp traffic that should be accepted should be inserted before here.
+# An example.
+# /sbin/iptables -I Igmp -i bond0 -p igmp -j ACCEPT
+[ "$($IPTABLES -nL|awk '/Chain/ && /Igmp/ {print $2}')" = "Igmp" ] || $IPTABLES -N Igmp
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Igmp -p igmp $IPT_LOG "IPTABLES: Igmp: "
+$IPTABLES -A Igmp -p igmp -m comment --comment "Drop IGMP packets" -j DROP
+
+
+#####################
+# Invalid-source
+#####################
+log "Create Invalid-source chain."
+# Block any addresses that are not "forwardable" accoding to:
+# http://www.iana.nl/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml
+[ "$($IPTABLES -nL|awk '/Chain/ && /Invalid-source/ {print $2}')" = "Invalid-source" ] || $IPTABLES -N Invalid-source
+
+$IPTABLES -A Invalid-source -s 0.0.0.0 -d 224.0.0.1 -m addrtype --dst-type MULTICAST -m comment --comment "Silently drop Proxmox cman multicasts" -j DROP
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-source -s 0.0.0.0/8 $IPT_LOG "IPTABLES: inv-src 0.0.0.0/8: "
+$IPTABLES -A Invalid-source -s 0.0.0.0/8 -m comment --comment "IANA reserved" -j DROP
+
+$IPTABLES -A Invalid-source -s 10.0.0.0/8 -m comment --comment "10/8 net is a valid source" -j RETURN # Allow local net
+$IPTABLES -A Invalid-source -s 172.16.0.0/12 -m comment --comment "172.16/12 network is a valid source" -j RETURN # Allow NFS mounts to Groenlo
+$IPTABLES -A Invalid-source -s 192.168.0.0/16 -m comment --comment "192.168/16 network is a valid source" -j RETURN # Allow NFS mounts to Groenlo
+
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-source -s 100.64.0.0/10 $IPT_LOG "IPTABLES: SRC 100.64.0.0/10: "
+$IPTABLES -A Invalid-source -s 100.64.0.0/10 -m comment --comment "IANA reserved" -j DROP
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-source -s 127.0.0.0/8 $IPT_LOG "IPTABLES: SRC 127.0.0.0/8: "
+$IPTABLES -A Invalid-source -s 127.0.0.0/8 -m comment --comment "IANA reserved" -j DROP
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-source -s 169.254.0.0/16 $IPT_LOG "IPTABLES: SRC169.254.0.0/16: "
+$IPTABLES -A Invalid-source -s 169.254.0.0/16 -m comment --comment "IANA reserved" -j DROP
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-source -s 192.0.0.0/24 $IPT_LOG "IPTABLES: SRC 192.0.0.0/24: "
+$IPTABLES -A Invalid-source -s 192.0.0.0/24 -m comment --comment "IANA reserved" -j DROP
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-source -s 192.0.2.0/24 $IPT_LOG "IPTABLES: SRC 192.0.2.0/24: "
+$IPTABLES -A Invalid-source -s 192.0.2.0/24 -m comment --comment "IANA reserved" -j DROP
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-source -s 198.18.0.0/15 $IPT_LOG "IPTABLES: SRC 198.18.0.0/15: "
+$IPTABLES -A Invalid-source -s 198.18.0.0/15 -m comment --comment "IANA reserved" -j DROP
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-source -s 198.51.100.0/24 $IPT_LOG "IPTABLES: S198.51.100.0/24: "
+$IPTABLES -A Invalid-source -s 198.51.100.0/24 -m comment --comment "IANA reserved" -j DROP
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-source -s 203.0.113.0/24 $IPT_LOG "IPTABLES: SRC203.0.113.0/24: "
+$IPTABLES -A Invalid-source -s 203.0.113.0/24 -m comment --comment "IANA reserved" -j DROP
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-source -s 240.0.0.0/5 $IPT_LOG "IPTABLES: SRC 240.0.0.0/5: "
+$IPTABLES -A Invalid-source -s 240.0.0.0/5 -m comment --comment "IANA reserved" -j DROP
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-source -s 248.0.0.0/6 $IPT_LOG "IPTABLES: SRC 248.0.0.0/6: "
+$IPTABLES -A Invalid-source -s 248.0.0.0/6 -m comment --comment "IANA reserved" -j DROP
+
+
+#####################
+# Invalid-destination
+#####################
+log "Create Invalid-destination chain."
+[ "$($IPTABLES -nL|awk '/Chain/ && /Invalid-destination/ {print $2}')" = "Invalid-destination" ] || $IPTABLES -N Invalid-destination
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-destination -d 0.0.0.0/8 $IPT_LOG "IPTABLES: DST 0.0.0.0/8: "
+$IPTABLES -A Invalid-destination -d 0.0.0.0/8 -m comment --comment "IANA reserved" -j REJECT --reject-with icmp-host-prohibited
+
+$IPTABLES -A Invalid-destination -d 10.0.0.0/8 -m comment --comment "10/8 net is a valid destination" -j RETURN # Allow local net
+$IPTABLES -A Invalid-destination -d 172.16.0.0/12 -m comment --comment "172.16/12 network is a valid destination" -j RETURN # Allow NFS mounts to Groenlo
+$IPTABLES -A Invalid-destination -d 192.168.0.0/16 -m comment --comment "192.168/16 network is a valid destination" -j RETURN # Allow NFS mounts to Groenlo
+
+# RFC-6598
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-destination -d 100.64.0.0/10 $IPT_LOG "IPTABLES: DST 100.64.0.0/10: "
+$IPTABLES -A Invalid-destination -d 100.64.0.0/10 -m comment --comment "IANA reserved" -j REJECT --reject-with icmp-host-prohibited
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-destination -d 127.0.0.0/8 $IPT_LOG "IPTABLES: DST 127.0.0.0/8: "
+$IPTABLES -A Invalid-destination -d 127.0.0.0/8 -m comment --comment "IANA reserved" -j REJECT --reject-with icmp-host-prohibited
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-destination -d 169.254.0.0/16 $IPT_LOG "IPTABLES: DST169.254.0.0/16: "
+$IPTABLES -A Invalid-destination -d 169.254.0.0/16 -m comment --comment "IANA reserved" -j REJECT --reject-with icmp-host-prohibited
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-destination -d 192.0.0.0/24 $IPT_LOG "IPTABLES: DST 192.0.0.0/24: "
+$IPTABLES -A Invalid-destination -d 192.0.0.0/24 -m comment --comment "IANA reserved" -j REJECT --reject-with icmp-host-prohibited
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-destination -d 192.0.2.0/24 $IPT_LOG "IPTABLES: DST 192.0.2.0/24: "
+$IPTABLES -A Invalid-destination -d 192.0.2.0/24 -m comment --comment "IANA reserved" -j REJECT --reject-with icmp-host-prohibited
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-destination -d 198.18.0.0/15 $IPT_LOG "IPTABLES: DST 198.18.0.0/15: "
+$IPTABLES -A Invalid-destination -d 198.18.0.0/15 -m comment --comment "IANA reserved" -j REJECT --reject-with icmp-host-prohibited
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-destination -d 198.51.100.0/24 $IPT_LOG "IPTABLES: D198.51.100.0/24: "
+$IPTABLES -A Invalid-destination -d 198.51.100.0/24 -m comment --comment "IANA reserved" -j REJECT --reject-with icmp-host-prohibited
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-destination -d 203.0.113.0/24 $IPT_LOG "IPTABLES: DST203.0.113.0/24: "
+$IPTABLES -A Invalid-destination -d 203.0.113.0/24 -m comment --comment "IANA reserved" -j REJECT --reject-with icmp-host-prohibited
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-destination -d 240.0.0.0/5 $IPT_LOG "IPTABLES: DST 240.0.0.0/5: "
+$IPTABLES -A Invalid-destination -d 240.0.0.0/5 -m comment --comment "IANA reserved" -j REJECT --reject-with icmp-host-prohibited
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-destination -d 248.0.0.0/6 $IPT_LOG "IPTABLES: DST 248.0.0.0/6: "
+$IPTABLES -A Invalid-destination -d 248.0.0.0/6 -m comment --comment "IANA reserved" -j REJECT --reject-with icmp-host-prohibited
+
+
+#####################
+# Invalid-packet
+#####################
+log "Create an Invalid-packet Chain."
+[ "$($IPTABLES -nL|awk '/Chain/ && /Invalid-packet/ {print $2}')" = "Invalid-packet" ] || $IPTABLES -N Invalid-packet
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-packet -p tcp --tcp-flags ACK,FIN FIN $IPT_LOG "IPTABLES: Inv ACK,FIN FIN: "
+$IPTABLES -A Invalid-packet -p tcp --tcp-flags ACK,FIN FIN -m comment --comment "ACK,FIN FIN" -j DROP
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-packet -p tcp --tcp-flags ACK,PSH PSH $IPT_LOG "IPTABLES: Inv ACK,PSH PSH: "
+$IPTABLES -A Invalid-packet -p tcp --tcp-flags ACK,PSH PSH -m comment --comment "ACK,PSH PSH" -j DROP
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-packet -p tcp --tcp-flags ACK,URG URG $IPT_LOG "IPTABLES: Inv ACK,URG URG: "
+$IPTABLES -A Invalid-packet -p tcp --tcp-flags ACK,URG URG -m comment --comment "ACK,URG URG" -j DROP
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-packet -p tcp --tcp-flags FIN,RST FIN,RST $IPT_LOG "IPTABLES: FIN,RST FIN,RST: "
+$IPTABLES -A Invalid-packet -p tcp --tcp-flags FIN,RST FIN,RST -m comment --comment "FIN,RST FIN,RST" -j DROP
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-packet -p tcp --tcp-flags SYN,FIN SYN,FIN $IPT_LOG "IPTABLES: SYN,FIN SYN,FIN: "
+$IPTABLES -A Invalid-packet -p tcp --tcp-flags SYN,FIN SYN,FIN -m comment --comment "SYN,FIN SYN,FIN" -j DROP
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-packet -p tcp --tcp-flags SYN,RST SYN,RST $IPT_LOG "IPTABLES: SYN,RST SYN,RST: "
+$IPTABLES -A Invalid-packet -p tcp --tcp-flags SYN,RST SYN,RST -m comment --comment "SYN,RST SYN,RST" -j DROP
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-packet -p tcp --tcp-flags ALL ALL $IPT_LOG "IPTABLES: Inv-pkt ALL ALL: "
+$IPTABLES -A Invalid-packet -p tcp --tcp-flags ALL ALL -m comment --comment "ALL ALL" -j DROP
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-packet -p tcp --tcp-flags ALL NONE $IPT_LOG "IPTABLES: Inv-pkt ALL NONE: "
+$IPTABLES -A Invalid-packet -p tcp --tcp-flags ALL NONE -m comment --comment "ALL NONE" -j DROP
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-packet -p tcp --tcp-flags ALL SYN,FIN,PSH,URG $IPT_LOG "IPTABLES: ALL SYN,FIN,PSH,URG"
+$IPTABLES -A Invalid-packet -p tcp --tcp-flags ALL SYN,FIN,PSH,URG -m comment --comment "ALL SYN,FIN,PSH,URG" -j DROP
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-packet -p tcp --tcp-flags ALL FIN,PSH,URG $IPT_LOG "IPTABLES: ALL FIN,PSH,URG: "
+$IPTABLES -A Invalid-packet -p tcp --tcp-flags ALL FIN,PSH,URG -m comment --comment "ALL FIN,PSH,URG" -j DROP
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-packet -p tcp --tcp-flags ALL SYN,RST,ACK,FIN,URG $IPT_LOG "IPTABLES: SYN,RST,ACK,FIN,URG"
+$IPTABLES -A Invalid-packet -p tcp --tcp-flags ALL SYN,RST,ACK,FIN,URG -m comment --comment "ALL SYN,RST,ACK,FIN,URG" -j DROP
+
+# Allow FIN,ACK because these packets trip in the invalid state while they aren't.
+log "Return RST packets from the Invalid-packet chain."
+$IPTABLES -A Invalid-packet -p tcp --tcp-flags ALL RST -m comment --comment "Accept RST" -j ACCEPT
+# The fin,ack packets can be part of a short-lived http session so keep on filtering.
+log "Return FIN,ACK packets from the Invalid-packet chain."
+$IPTABLES -A Invalid-packet -p tcp --tcp-flags ALL FIN,ACK -m comment --comment "Return FIN,ACK" -j RETURN
+
+# Commented because this generates logflooding. First find out why so much packets are considered invalid.
+#[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Invalid-packet -m conntrack --ctstate Invalid $IPT_LOG "IPTABLES: Invalid: "
+#$IPTABLES -A Invalid-packet -m conntrack --ctstate Invalid -j DROP
+
+
+#####################
+# Notsyn
+#####################
+log "Create a Notsyn Chain."
+[ "$($IPTABLES -nL|awk '/Chain/ && /Notsyn/ {print $2}')" = "Notsyn" ] || $IPTABLES -N Notsyn
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Notsyn -p tcp -m state --state NEW -m tcp ! --tcp-flags FIN,SYN,RST,ACK SYN $IPT_LOG "IPTABLES: Notsyn: "
+$IPTABLES -A Notsyn -p tcp -m state --state NEW -m tcp ! --tcp-flags FIN,SYN,RST,ACK SYN -m comment --comment "Drop new sessions that start without SYN flag" -j DROP
+
+
+#####################
+# Smurf
+#####################
+log "Create a Smurfchain."
+[ "$($IPTABLES -nL|awk '/Chain/ && /Smurf/ {print $2}')" = "Smurf" ] || $IPTABLES -N Smurf
+$IPTABLES -A Smurf -s 0.0.0.0/32 -m comment --comment "Return source 0.0.0.0/32" -j RETURN
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Smurf -m addrtype --src-type BROADCAST $IPT_LOG "IPTABLES: Smurf (bcast src): "
+$IPTABLES -A Smurf -m addrtype --src-type BROADCAST -m comment --comment "Drop Source broadcasts" -j DROP
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Smurf -s 224.0.0.0/4 $IPT_LOG "IPTABLES: Smurf (mcast src): "
+$IPTABLES -A Smurf -s 224.0.0.0/4 -m comment --comment "Drop multicast source" -j DROP
+
+
+#####################
+# Icmp
+#####################
 log "Allowing Icmp to be a good netizen."
-icmptypes="3 8 11 12"
-for icmptype in ${icmptypes};do
-  $IPTABLES -A INPUT -p ICMP -s 0/0 --icmp-type ${icmptype} -j ACCEPT
+[ "$($IPTABLES -nL|awk '/Chain/ && /Icmp/ {print $2}')" = "Icmp" ] || $IPTABLES -N Icmp
+# Handle pings
+$IPTABLES -A Icmp -p icmp -m icmp --icmp-type 8  -m limit --limit 2/s -m comment --comment "Allow 2 pings per second" -j ACCEPT
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Icmp -p icmp -m icmp --icmp-type 8 $IPT_LOG "IPTABLES: Excessive Ping: "
+$IPTABLES -A Icmp -p icmp -m icmp --icmp-type 8 -m comment --comment "Drop any more pings" -j DROP
+
+# It seems that we receive a lot of unrelated icmp messages. Drop them to prevent
+# useless logging.
+$IPTABLES -A Icmp -p icmp -m icmp --icmp-type 3 -m comment --comment "Silently drop Destination unreachable" -j DROP
+$IPTABLES -A Icmp -p icmp -m icmp --icmp-type 11 -m comment --comment "Silently drop Time exceeded" -j DROP
+
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Icmp -p icmp $IPT_LOG "IPTABLES: ICMP: "
+$IPTABLES -A Icmp -p icmp -m comment --comment "Drop any remaining ICMP packets" -j DROP
+
+
+#####################
+# Reject
+#####################
+log "Create a Reject chain that rejects unwanted stuff."
+[ "$($IPTABLES -nL|awk '/Chain/ && /Reject/ {print $2}')" = "Reject" ] || $IPTABLES -N Reject
+$IPTABLES -A Reject
+log "Filter everything through the Invalid-source chain."
+$IPTABLES -A Reject -m comment --comment "Filter through Invalid-source chain" -j Invalid-source
+log "Filter everything through the Invalid-destination chain."
+$IPTABLES -A Reject -m comment --comment "Filter through Invalid-destination chain" -j Invalid-destination
+
+log "Filter everything through the Igmp chain."
+$IPTABLES -A Reject -p igmp -m comment --comment "Filter IGMP traffic in Igmp chain" -j Igmp
+log "Filter everything through the Icmp chain."
+$IPTABLES -A Reject -p icmp -m comment --comment "Filter ICMP traffic in Icmp chain" -j Icmp
+log "Filter everything through the Broadcast chain."
+$IPTABLES -A Reject -m comment --comment "Filter broadcasts in Broadcast chain" -j Broadcast
+log "Filter everything through the Smurf chain."
+$IPTABLES -A Reject -m conntrack --ctstate INVALID,NEW -m comment --comment "Filter Invalid and new packets through Smurf chain" -j Smurf
+log "Filter everything through the Invalid-packet chain."
+$IPTABLES -A Reject -p tcp -m comment --comment "Filter TCP packets through Invalid-packet chain" -j Invalid-packet
+log "Filter New sessions through the Notsyn chain."
+$IPTABLES -A Reject -p tcp -m state --state NEW -m comment --comment "Filter NEW sessions through Notsyn chain" -j Notsyn
+[ $LOGLEVEL -ge 2 ] && $IPTABLES -A Reject -p tcp -m tcp --dport 113 -m comment --comment Auth $IPT_LOG "IPTABLES: Auth: "
+$IPTABLES -A Reject -p tcp -m tcp --dport 113 -m comment --comment "Reject Auth packets" -j REJECT --reject-with icmp-port-unreachable
+# For a while we have to accept SMB (That is until /mnt/appservers will finaly be mounted via something else).
+# $IPTABLES -A Reject -p udp -m multiport --dports 135,445 -m comment --comment SMB -j reject
+# $IPTABLES -A Reject -p udp -m udp --dport 137:139 -m comment --comment SMB -j reject
+# $IPTABLES -A Reject -p udp -m udp --sport 137 --dport 1024:65535 -m comment --comment SMB -j reject
+# $IPTABLES -A Reject -p tcp -m multiport --dports 135,139,445 -m comment --comment SMB -j reject
+[ $LOGLEVEL -ge 2 ] && $IPTABLES -A Reject -p udp -m udp --dport 1900 $IPT_LOG "IPTABLES: UPnP: "
+$IPTABLES -A Reject -p udp -m udp --dport 1900 -m comment --comment "Drop UPnP packets" -j DROP
+[ $LOGLEVEL -ge 1 ] && $IPTABLES -A Reject -p udp -m udp --sport 53 -m comment --comment "Late DNS Replies" $IPT_LOG "IPTABLES: Late DNS reply: "
+$IPTABLES -A Reject -p udp -m udp --sport 53 -m comment --comment "Drop late DNS Replies" -j DROP
+
+log "Sent all traffic on input to Reject chain first."
+$IPTABLES -A INPUT  -m comment --comment "Sent everything to Reject chain for initial inspection" -j Reject
+log "Filter outgoing traffic on valid destination addresses."
+$IPTABLES -A OUTPUT -m comment --comment "Validate destination of all output packets" -j Invalid-destination
+
+
+#####################
+# Other rules
+#####################
+# From here we load rules from ${rulesd}
+for rulefile in ${rulesd}/*;do
+  log "Loading rules from: $(basename $rulefile)"
+  /bin/sh "$rulefile"
 done
 
-# Below You'll find functions that open specific ports per service.
-allow_ftp_server () {
-  log "Allow ftp."
-  $IPTABLES -A BRUTE-FORCE  -m recent --update --seconds 60 --hitcount 4 --rttl --name FTP -m limit --limit 1/minute -j LOG --log-level 4 --log-prefix "BRUTE-FORCE-FTP "
-  $IPTABLES -A BRUTE-FORCE  -m recent --rcheck --seconds 60 --hitcount 4 --rttl --name FTP -j DROP
-  $IPTABLES -A BRUTE-FORCE  -m recent --rcheck --rttl --name FTP -j ACCEPT
-  $IPTABLES -A INPUT -s 0/0  -p tcp --dport 21 -m state --state NEW -m recent --set --name FTP -j BRUTE-FORCE
-}
+log "Sent everything else to the reject chain."
+# By default anything that is not accepted must be logged and rejected.
+$IPTABLES -A INPUT -m comment --comment "Reject anything that's not specificly allowed" -g reject
 
-allow_ssh_server () {
-  [ -z "${allowed_ssh_clients}" ] && allowed_ssh_clients=0.0.0.0
-  if [ -z "$1" ];then
-    port=22
-    for src in ${allowed_ssh_clients[@]} ;do
-      log "Allow SSH from $src"
-      $IPTABLES -A INPUT -s ${src} -p tcp --dport ${port} -j ACCEPT
-    done
-  else
-    port=${1}
-    $IPTABLES -A INPUT -p tcp --dport ${port} -j ACCEPT
-  fi
-}
+# nieuwe regels opslaan
+# begin rules file warning
+cat << EOF > "${rulesfile}"
+# WARNING
+# This is a AUTOGENERATED file so do NOT edit.
+# edit $0 instead
+#
+EOF
 
-allow_dns_server () {
-  log "Allow DNS."
-  $IPTABLES -A INPUT -s 0/0 -p udp --dport 53 -j ACCEPT
-  $IPTABLES -A INPUT -s 0/0 -p tcp --dport 53 -j ACCEPT
-}
-
-allow_web_server () {
-  log "Allow http/https"
-  webserverports="80 443 8080 8443"
-  for port in ${webserverports};do
-    $IPTABLES -A INPUT -s 0/0 -p tcp --dport ${port} -j ACCEPT
-  done
-}
-
-allow_smtp_server () {
-  log "Allow smtp."
-  $IPTABLES -A INPUT -s 0/0 -p tcp --dport 25 -j ACCEPT
-}
-
-allow_puppet_server () {
-  log "Allow puppetmaster traffic."
-  $IPTABLES -A INPUT -p tcp --dport 8140 -j ACCEPT
-}
-
-allow_dhcp_server () {
-  log "Allow dhcp."
-  $IPTABLES -A INPUT -p udp -s 0/0 --sport 68 --dport 67 -j ACCEPT
-  $IPTABLES -A INPUT -p tcp -s 0/0 --sport 68 --dport 67 -j ACCEPT
-}
-
-allow_tftp_server () {
-  log "Allow tftp."
-  $IPTABLES -A INPUT -s 0/0 -p udp --dport 69 -j ACCEPT
-  $IPTABLES -A INPUT -s 0/0 -p tcp --dport 69 -j ACCEPT
-}
-
-allow_iscsi_targetd () {
-  log "Iscsi target."
-  $IPTABLES -A INPUT -s 0/0 -d ${br4_ip} -p tcp --dport 3260 -j ACCEPT
-}
-
-allow_smb_server () {
-  log "Allow Samba."
-  $IPTABLES -A INPUT -s 0/0 -p udp --dport 137 -j ACCEPT
-  $IPTABLES -A INPUT -s 0/0 -p udp --dport 138 -j ACCEPT
-  $IPTABLES -A INPUT -s 0/0 -p tcp --dport 139 -j ACCEPT
-  $IPTABLES -A INPUT -s 0/0 -p tcp --dport 445 -j ACCEPT
-}
-
-allow_munin_server () {
-  for svr in ${munin_servers};do
-    log "Allow traffic from Muninserver ${svr}."
-    $IPTABLES -A INPUT -s ${svr} -p tcp --dport 4949 -j ACCEPT
-  done
-}
-
-allow_nagios_server () {
-  for svr in ${nagios_servers};do
-    log "Allow traffic from Nagiosserver ${svr}."
-    $IPTABLES -A INPUT -s ${svr} -p tcp --dport 5666 -j ACCEPT
-  done
-}
-
-allow_nfs_server () {
-  log "Allow nfs."
-  nfsports="111 2049 40000:40004"
-  for port in ${nfsports};do
-    $IPTABLES -A INPUT -p tcp --dport ${port} -j ACCEPT
-    $IPTABLES -A INPUT -p udp --dport ${port} -j ACCEPT
-  done
-}
-
-log "Load service specific rules."
-# Type specific services
-case ${type} in
-  dhcp) allow_dhcp_server ;;
-  inst)
-    allow_dhcp_server
-    allow_tftp_server
-    allow_web_server
-    ;;
-  dns) allow_dns_server ;;
-  ftp) allow_ftp_server ;;
-  mail) allow_smtp_server ;;
-  dev|svn|web)
-    allow_web_server
-    ;;
-  kvm)
-    allow_kvm_clients
-    ;;
-  laptop)
-    # Uncomment to allow ssh traffic
-    #allow_ssh_server
-    ;;
-esac
-
-log "Set some log rules."
-$IPTABLES -t mangle -A PREROUTING -p tcp --tcp-flags ALL FIN,URG,PSH -m limit --limit 5/minute -j LOG --log-level 4 --log-prefix "NMAP-XMAS SCAN:" --log-tcp-options --log-ip-options
-$IPTABLES -t mangle -A PREROUTING -p tcp --tcp-flags SYN,RST SYN,RST -m limit --limit 5/minute -j LOG --log-level 4 --log-prefix "SYN/RST SCAN:" --log-tcp-options --log-ip-options
-$IPTABLES -t mangle -A PREROUTING -p tcp --tcp-flags SYN,FIN SYN,FIN -m limit --limit 5/minute -j LOG --log-level 4 --log-prefix "SYN/FIN SCAN:" --log-tcp-options --log-ip-options
-#$IPTABLES -A INPUT -m limit --limit 5/minute ! -d ${BROADCAST} -p udp ! --sport 137 ! --dport 137 -j LOG --log-level 4 --log-prefix "rejected: "
-$IPTABLES -A INPUT -p udp -j REJECT --reject-with icmp-port-unreachable
-#$IPTABLES -A INPUT -m limit --limit 5/minute ! -d ${BROADCAST} ! -p udp -j LOG --log-level 4 --log-prefix "rejected: "
-$IPTABLES -A INPUT -p tcp -j REJECT --reject-with tcp-reset
-
-log "Restarting fail2ban."
-/etc/init.d/fail2ban restart
-log "Wait 5 seconds to give f2b the chance to create fw rules in background."
-sleep 5
+log "Allow fail2ban to add it's rules before we save the rules:"
+[ -x /etc/init.d/fail2ban ] && /etc/init.d/fail2ban stop
+sleep 1
+[ -x /etc/init.d/fail2ban ] && /etc/init.d/fail2ban start
+sleep 1
 
 log "Saving iptables rules to $rulesfile"
-/sbin/iptables-save > ${rulesfile}
+/sbin/iptables-save >> ${rulesfile}
 
-/etc/init.d/iptables restart
-
-log "Done"
-#END
+log "Done ${me}"

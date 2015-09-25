@@ -59,8 +59,8 @@ usage () {
 
 cleanup () {
   # Remove temp mount
-  [ -n "${tmpfile}" -f "${tmpfile}" ] && rm -f "${tmpfile}"
-  [ -n "${tmpdir}" -d "${tmpdir}"   ] && rm -f "${tmpdir}"
+  [ -n "${tmpfile}" -a -f "${tmpfile}" ] && rm -f "${tmpfile}"
+  [ -n "${tmpdir}" -a -d "${tmpdir}"   ] && rm -f "${tmpdir}"
 }
 
 is_int () { return $(test "$1" -eq "$1" > /dev/null 2>&1); }
@@ -143,6 +143,21 @@ log "Checking the initscript (You should see some ls output now)"
 ls -la /etc/init.d/iptables
 log "Listing startscripts for iptables"
 find /etc/rc?.d -name S\*iptables
+
+log "Create logdir."
+install -dm 775 /var/log/iptables
+
+log "Create rules.d."
+install -dm775 /etc/iptables
+install -dm775 /etc/iptables/rules.d
+
+log "Create rsyslog config."
+cat << EOF > /etc/rsyslog.d/iptables.conf
+:msg,regex,".*\] IPTABLES: " -/var/log/iptables/iptables.log
+# Do not log these messages any further.
+:msg,regex,".*\] IPTABLES: " ~
+EOF
+service rsyslog restart
 
 log "stopping iptables"
 /etc/init.d/iptables stop
