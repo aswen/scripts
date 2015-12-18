@@ -1,6 +1,7 @@
 #!/bin/bash
-# <SCRIPTNAME>
-# <WHAT DOES THIS SCRIPT DO?>
+# backup_keepass
+# This script is intended to be run by cron and each time check if the keepass
+# database is changed and if so: create a copy.
 
 # Copyright (C) 2014-2015 Alexander Swen <alex@swen.nu>
 
@@ -21,7 +22,7 @@
 # Private contact: alex@swen.nu
 
 # CHANGELOG:
-# <DATE>	A.Swen	created.
+# 20151218	A.Swen	created.
 
 # SETTINGS
 date=$(date +%Y%m%d)
@@ -48,43 +49,12 @@ usage () {
   printf '%s\n\n' "example: ${me} " >&2
   exit 1
 }
-get_options () {
-  [ $# -gt 0 ]||usage
-  while getopts "u:" opt;do
-    case ${opt} in
-      u) export user=`echo ${OPTARG}` ;;
-      *) usage;;
-    esac
-  done
-}
-
-duration () {
-  local before=$1
-  local after="$(date +%s)"
-  local elapsed="$(expr $after - $before)"
-  local hours=$(($elapsed / 3600))
-  local elapsed=$(($elapsed - $hours * 3600))
-  local minutes=$(($elapsed / 60))
-  local seconds=$(($elapsed - $minutes * 60))
-  time_running="${hours}:${minutes}:${seconds}"
-}
 
 log () { printf '%s %s\n' "$(date +%F' '%T)" "$@"; }
 
-log_msg () {
-  duration ${before_total}
-  message="$1"
-  echo "${time_running} $1"|tee -a ${short_log}
-}
-
 # SCRIPT
-before_total="$(date +%s)"
-[ ${UID} -gt 0 ] && die 1 "Only root may do that."
-log_msg "$(date) started ${me}"
-# get_options $@
+log_msg "$(date) started."
 
 
-duration ${before_total}
-log_msg "Total time taken: ${time_running}"
-log_msg "$(date) finished"
+log_msg "$(date) finished."
 # END
