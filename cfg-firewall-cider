@@ -145,7 +145,9 @@ allow_ftp_server () {
 allow_ssh_server () {
   if [ -z "$1" ];then
     port=22
-    allowed_ssh_servers="172.17.0.0/16 192.168.200.0/24 213.160.213.80/28 87.249.123.0/25 77.222.68.16/28 217.114.110.32/27 77.222.68.160/27 77.222.80.64/27 213.126.140.96/27 213.84.201.69 46.165.221.66 87.253.142.25"
+    allowed_ssh_servers="172.17.0.0/16 192.168.200.0/24 213.160.213.80/28 87.249.123.0/25 77.222.68.16/28 217.114.110.32/27 77.222.68.160/27 77.222.80.64/27 213.126.140.96/27 213.84.201.69 46.165.221.66 87.253.142.25 213.17.43.114 86.90.179.142"
+    # 213.17.43.114   Huize 4houten
+    # 86.90.179.142 Stephan Emmerich
     for src in ${allowed_ssh_servers} ;do
       echo allow SSH from $src
       $IPTABLES -A INPUT -d ${INTERNAL_IP} -s ${src} -p tcp --dport ${port} -j ACCEPT
@@ -211,10 +213,10 @@ allow_iscsi_targetd () {
 }
 
 allow_logitech_squeezeboxserver () {
-  $IPTABLES -A INPUT -s 0/0 -p tcp --dport 9000 -j ACCEPT
-  $IPTABLES -A INPUT -s 0/0 -p tcp --dport 9090 -j ACCEPT
-  $IPTABLES -A INPUT -s 0/0 -p tcp --dport 3483 -j ACCEPT
-  $IPTABLES -A INPUT -s 0/0 -p udp --dport 3483 -j ACCEPT
+  $IPTABLES -A INPUT -s 172.17.0.0/16 -p tcp --dport 9000 -j ACCEPT
+  $IPTABLES -A INPUT -s 172.17.0.0/16 -p tcp --dport 9090 -j ACCEPT
+  $IPTABLES -A INPUT -s 172.17.0.0/16 -p udp --dport 3483 -j ACCEPT
+  $IPTABLES -A INPUT -s 172.17.0.0/16 -p udp --dport 17784 -j ACCEPT
 }
 
 
