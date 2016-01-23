@@ -110,7 +110,7 @@ $IPTABLES -A VALID-SRC -s 240.0.0.0/5 -m recent --set -j DROP
 $IPTABLES -A VALID-SRC -s 127.0.0.0/8 -m recent --set -j DROP
 $IPTABLES -A VALID-SRC -d 127.0.0.0/8 -m recent --set -j DROP
 $IPTABLES -A VALID-SRC -s 0.0.0.0/8 -m recent --set -j DROP
-$IPTABLES -A VALID-SRC -d 255.255.255.255 -m recent --set -j DROP
+#$IPTABLES -A VALID-SRC -d 255.255.255.255 -m recent --set -j DROP
 $IPTABLES -A VALID-SRC -s 169.254.0.0/16 -m recent --set -j DROP
 $IPTABLES -A VALID-SRC -s ${INTERNAL_IP} -m limit --limit 1/minute -j LOG --log-level 4 --log-prefix "INVALLID SOURCE "
 $IPTABLES -A VALID-SRC -s ${INTERNAL_IP} -m recent --set -j DROP
@@ -213,10 +213,12 @@ allow_iscsi_targetd () {
 }
 
 allow_logitech_squeezeboxserver () {
-  $IPTABLES -A INPUT -s 172.17.0.0/16 -p tcp --dport 9000 -j ACCEPT
-  $IPTABLES -A INPUT -s 172.17.0.0/16 -p tcp --dport 9090 -j ACCEPT
-  $IPTABLES -A INPUT -s 172.17.0.0/16 -p udp --dport 3483 -j ACCEPT
-  $IPTABLES -A INPUT -s 172.17.0.0/16 -p udp --dport 17784 -j ACCEPT
+  $IPTABLES -A INPUT -p tcp --dport 9000 -j ACCEPT # Squeezeboxserver WUI
+  $IPTABLES -A INPUT -p tcp --dport 9090 -j ACCEPT
+  $IPTABLES -A INPUT -p tcp --dport 9092 -j ACCEPT
+  $IPTABLES -A INPUT -p tcp --dport 3483 -j ACCEPT # Squeezeboxserver control
+  $IPTABLES -A INPUT -p udp --dport 3483 -j ACCEPT # Squeezeboxserver discovery
+  $IPTABLES -A INPUT -p udp --dport 17784 -j ACCEPT
 }
 
 
