@@ -28,7 +28,8 @@
 date=$(date +%Y%m%d)
 me=$(basename $0)
 mydir=$(dirname $0)
-
+keepass_dir="${HOME}/KeepassX"
+bck_dir="$keepass_dir/.backup"
 
 # FUNCTIONS
 die () {
@@ -50,11 +51,33 @@ usage () {
   exit 1
 }
 
-log () { printf '%s %s\n' "$(date +%F' '%T)" "$@"; }
+log () { printf '%s:%s: %s\n' "$(date +%F' '%T)" "$me" "$@"; }
+now () { date +%FT%T; }
+
+find_last_backup () {
+  ls -rt $bck_dir/$(basename $file).[0-9]*|tail -1
+}
 
 # SCRIPT
-log_msg "$(date) started."
+log "Started."
+[ -d $keepass_dir ] || die 1 "Keepassdir $keepass_dir not found."
+[ -d $bck_dir ]     || install -dm 700 $bck_dir
+
+for file in $keepass_dir/*.kdbx;do
+  log "Processing $(basename $file)."
+  last_backup=$(find_last_backup)
+  log "Last=$(basename $last_backup)"
+  if [ ! -f $last ];then
+    log "$file was never backed up before. Will backup now."
+    cp $file $bck_dir/$(basename $file).$(now)
+  elif ! diff -q $file $last_backup 2>&1 >/dev/null;then
+    log "$(basename $file) is changed since last backup. Will backup now."
+    cp $file $bck_dir/$(basename $file).$(now)
+  else
+    log "Nothing to do."
+  fi
+done
 
 
-log_msg "$(date) finished."
+log "Finished."
 # END
