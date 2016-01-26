@@ -22,6 +22,7 @@
 
 # CHANGELOG:
 # 2015-02-15	A.Swen	created.
+# 2016-01-24  A.Swen  Added logmessage to warn that beep isn't there.
 
 # INSTALLATION
 
@@ -99,12 +100,16 @@ EOF_MSG
       ;;
     *) die 4 "You should use 'warn' or 'crit' as \$1 in the notify function.";;
   esac
-  /usr/bin/notify-send --expire-time=$ttl --urgency=$urgency "Batery Low Warning" "$message"
+  notify-send --expire-time=$ttl --urgency=$urgency "Batery Low Warning" "$message"
 }
 
 try_beep () {
-  [ -x /usr/bin/beep ] || return
-  beep -f $beep_freq -l $beep_time -r $beep_times -d 200
+  if [ -x /usr/bin/beep ];then
+    log "Beep not installed."
+    return
+  else
+    beep -f $beep_freq -l $beep_time -r $beep_times -d 200
+  fi
 }
 
 # SCRIPT
