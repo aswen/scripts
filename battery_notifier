@@ -82,20 +82,26 @@ time_to_full () {
 }
 
 notify () {
-  local message=$(cat << EOF_MSG
-Batterylevel is $capacity and $status.
-Estimated time to empty: $time_to_empty.
-EOF_MSG
-)
   log "Trying to warn the user."
   case $1 in
     warn)
       local ttl=60000
       local urgency=normal
+      local message=$(cat << EOF_MSG
+Batterylevel is $capacity and $status.
+Estimated time to empty: $time_to_empty.
+EOF_MSG
+      )
       ;;
     crit)
       local ttl=120000
       local urgency=critical
+      local message=$(cat << EOF_MSG
+Batterylevel is $capacity and $status.
+Estimated time to empty: $time_to_empty.
+Laptop will go into sleep in 30 seconds!
+EOF_MSG
+      )
       [ $beep == true ] && try_beep
       ;;
     *) die 4 "You should use 'warn' or 'crit' as \$1 in the notify function.";;
@@ -136,6 +142,9 @@ if [[ "$status" == "Discharging" ]];then
   log "The battery is $status and at ${capacity}%. Estimated time to empty: $time_to_empty."
   if [[ $capacity -le $crit ]];then
     notify crit
+    sleep 30
+    /usr/bin/i3lock -tei /home/alex/mug.png -c 000000 &
+    sudo /usr/sbin/pm-suspend
   elif [[ $capacity -le $warn ]];then
     notify warn
   fi
