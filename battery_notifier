@@ -111,10 +111,10 @@ EOF_MSG
 
 try_beep () {
   if [ -x /usr/bin/beep ];then
+    beep -f $beep_freq -l $beep_time -r $beep_times -d 200
+  else
     log "Beep not installed."
     return
-  else
-    beep -f $beep_freq -l $beep_time -r $beep_times -d 200
   fi
 }
 
