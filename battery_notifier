@@ -92,6 +92,7 @@ Batterylevel is $capacity and $status.
 Estimated time to empty: $time_to_empty.
 EOF_MSG
       )
+      [ $beep == true ] && try_beep
       ;;
     crit)
       local ttl=120000
