@@ -56,6 +56,7 @@ get_options () {
       *) usage;;
     esac
   done
+  unset OPTIND
 }
 
 duration () {
