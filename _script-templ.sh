@@ -49,14 +49,26 @@ usage () {
   exit 1
 }
 get_options () {
-  [ $# -gt 0 ]||usage
-  while getopts "u:" opt;do
-    case ${opt} in
-      u) export user=`echo ${OPTARG}` ;;
-      *) usage;;
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --thing1|-a)
+        shift
+        declare -r thing="$1"
+        shift
+        ;;
+      --thing2|-b)
+        shift
+        declare -r other_thing="$1"
+        shift
+        ;;
+      -h|--help)
+        usage
+        ;;
+      *)
+        usage
+        ;;
     esac
   done
-  unset OPTIND
 }
 
 duration () {
@@ -82,7 +94,9 @@ log_msg () {
 before_total="$(date +%s)"
 [ ${UID} -gt 0 ] && die 1 "Only root may do that."
 log_msg "$(date) started ${me}"
-# get_options $@
+if [[ $# -gt 0 ]];then
+  get_options
+fi
 
 
 duration ${before_total}
