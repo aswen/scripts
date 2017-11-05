@@ -49,10 +49,10 @@ die () {
 
 get_options () {
   [ $# -gt 0 ]||usage
-  while getopts "d:D:" opt;do
+  while getopts "s:d:" opt;do
     case ${opt} in
-      d) export dir="`echo $OPTARG`" ;;
-      D) export destination="`echo $OPTARG`" ;;
+      s) export source="`echo $OPTARG`" ;;
+      d) export destination="`echo $OPTARG`" ;;
       *) usage;;
     esac
   done
@@ -64,11 +64,11 @@ log () { printf '%s %s\n' "$(date +%F' '%T)" "$@"; }
 # SCRIPT
 get_options $@
 
-[ -n "$dir" ] || dir="/home/$LOGNAME/DOCUMENTEN"
+[ -n "$source" ] || dir="/home/$LOGNAME/DOCUMENTEN"
 [ -n "$destination" ] || destination=/netwerk/home-$LOGNAME
 
-log "Backing up $dir naar $destination."
-/usr/bin/rsync $rsyncopts "$dir" "$destination"
+log "Backing up $source naar $destination."
+/usr/bin/rsync $rsyncopts "$source" "$destination"
 
 log " "
 log "alles wat je hierboven ziet is gebackupped  (plus alles wat al was gebackupped natuurlijk)"
