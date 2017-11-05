@@ -284,8 +284,6 @@ $IPTABLES -A Invalid-source -s 0.0.0.0/8 -m comment --comment "IANA reserved" -j
 
 $IPTABLES -A Invalid-source -s 10.0.0.0/8 -m comment --comment "10/8 net is a valid source" -j RETURN # Allow local net
 $IPTABLES -A Invalid-source -s 172.16.0.0/12 -m comment --comment "172.16/12 network is a valid source" -j RETURN # Allow NFS mounts to Groenlo
-$IPTABLES -A Invalid-source -s 100.64.0.0/15 -m comment --comment "Andreas is a valid source" -j RETURN
-$IPTABLES -A Invalid-source -s 192.168.100.0/24 -m comment --comment "Andreas is a valid source" -j RETURN
 $IPTABLES -A Invalid-source -s 192.168.0.0/16 -m comment --comment "192.168/16 network is a valid source" -j RETURN # Allow NFS mounts to Groenlo
 
 
@@ -330,8 +328,6 @@ $IPTABLES -A Invalid-destination -d 0.0.0.0/8 -m comment --comment "IANA reserve
 
 $IPTABLES -A Invalid-destination -d 10.0.0.0/8 -m comment --comment "10/8 net is a valid destination" -j RETURN # Allow local net
 $IPTABLES -A Invalid-destination -d 172.16.0.0/12 -m comment --comment "172.16/12 network is a valid destination" -j RETURN # Allow NFS mounts to Groenlo
-$IPTABLES -A Invalid-destination -d 100.64.0.0/15 -m comment --comment "Andreas is a valid destination" -j RETURN
-$IPTABLES -A Invalid-destination -d 192.168.100.0/24 -m comment --comment "Andreas is a valid destination" -j RETURN
 $IPTABLES -A Invalid-destination -d 192.168.0.0/16 -m comment --comment "192.168/16 network is a valid destination" -j RETURN # Allow NFS mounts to Groenlo
 
 # RFC-6598
