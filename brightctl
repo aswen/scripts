@@ -55,7 +55,7 @@ usage () {
 # SCRIPT
 [ ${UID} -gt 0 ] && die 1 only root may do that
 case $HOSTNAME in
-  nvc2618)
+  nvc2762)
     ctlfile=/sys/class/backlight/intel_backlight/brightness
     ;;
   laptop-nico-aardbei)
