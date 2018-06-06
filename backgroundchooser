@@ -1,0 +1,104 @@
+#!/bin/bash
+# backgroundchooser
+# Chooses a random background file from a dir with backrgrounds.
+
+# Copyright (C) 2014-2015 Alexander Swen <alex@swen.nu>
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Alexander Swen
+# Private contact: alex@swen.nu
+
+# CHANGELOG:
+# 2018-01-25	A.Swen	created.
+
+
+# This script should be run from a users cron
+# 15 * * * * /data/git/alex/scripts/backgroundchooser -d /data/backgrounds
+
+# Requires the tool feh
+
+# SETTINGS
+date=$(date +%Y%m%d)
+me=$(basename $0)
+mydir=$(dirname $0)
+# Case insensitive list of filetypes
+filetypes='*.jpg *.jpeg *.png'
+
+# FUNCTIONS
+die () {
+  rc=$1
+  shift
+  printf '%s\n' "=====================" >&2
+  printf '%s\n' "==== FATAL ERROR ====" >&2
+  printf '%s\n\n' "=====================" >&2
+  printf '%s\n\n' "$@" >&2
+  exit $rc
+}
+
+usage () {
+  printf '%s\n' "===============" >&2
+  printf '%s\n' "==== USAGE ====" >&2
+  printf '%s\n\n' "===============" >&2
+  printf '%s\n' "Usage: ${me} " >&2
+  printf '%s\n\n' "example: ${me} " >&2
+  exit 1
+}
+
+get_options () {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --dir|-d)
+        shift
+        export backgrounds_dir="$1"
+        shift
+        ;;
+      -h|--help)
+        usage
+        ;;
+      *)
+        usage
+        ;;
+    esac
+  done
+}
+
+log () { printf '%s %s\n' "$(date +%F' '%T)" "$@"; }
+
+# SCRIPT
+log "Started ${me}"
+
+if [[ $# -gt 0 ]];then
+  get_options $@
+fi
+
+# Switch to backgrounds dir or die
+[ -n "$backgrounds_dir" ] && cd $backgrounds_dir || backgrounds_dir=$(pwd)
+
+# Build an array with background files
+shopt -s nocaseglob
+background_files=($(ls $filetypes))
+if [ ${#background_files[*]} -gt 1 ];then
+  # Pick a random background
+  background=${background_files[$(($RANDOM%${#background_files[*]}))]}
+else
+  die 1 "No suitable backgrounds found in $backgrounds_dir."
+fi
+
+# Set that background
+log "I have chosen $background"
+feh --bg-scale $background
+
+log "Finished"
+# END
