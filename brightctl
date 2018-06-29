@@ -55,7 +55,7 @@ usage () {
 # SCRIPT
 [ ${UID} -gt 0 ] && die 1 only root may do that
 case $HOSTNAME in
-  nvc2762)
+  nvc3691)
     ctlfile=/sys/class/backlight/intel_backlight/brightness
     ;;
   laptop-nico-aardbei)
@@ -70,7 +70,11 @@ esac
 br=$(cat ${ctlfile})
 
 # vary in steps
-if [ $br -le 937 -a $br -gt 100 ];then
+if [ $br -ge 1400 -a $1 == "up" ];then
+  step=$((1500-$br))
+elif [ $br -le 1500 -a $br -gt 1000 ];then
+  step=100
+elif [ $br -le 1000 -a $br -gt 100 ];then
   step=50
 elif [ $br -le 100 -a $br -gt 10 ];then
   step=10
