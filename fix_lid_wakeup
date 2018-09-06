@@ -1,0 +1,73 @@
+#!/bin/bash
+# fix_lid_wakeup
+# Avoids wakeup of laptop after lid close/suspend
+
+# Copyright (C) 2014-2015 Alexander Swen <alex@swen.nu>
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Installation:
+# cat << EOF|sudo tee /etc/systemd/system/fix_lid_wakeup.service
+#[Unit]
+#Description=Fix to prevent system from waking up after lid close
+#After=acpi-support.service
+#
+#[Service]
+#ExecStart=/data/git/alex/scripts/fix_lid_wakeup
+#Type=onshot
+#RemainAfterExit=yes
+#
+#[Install]
+#WantedBy=default.target
+#EOF
+
+# sudo chmod +x /etc/systemd/system/fix_lid_wakeup.service
+# sudo systemctl daemon-reload
+# sudo systemctl enable fix_lid_wakeup.service
+# sudo systemctl start fix_lid_wakeup.service
+
+
+# Alexander Swen
+# Private contact: alex@swen.nu
+
+# CHANGELOG:
+# 20180905	A.Swen	created.
+
+# SETTINGS
+date=$(date +%Y%m%d)
+me=$(basename $0)
+mydir=$(dirname $0)
+
+
+# FUNCTIONS
+die () {
+  rc=$1
+  shift
+  printf '%s\n' "=====================" >&2
+  printf '%s\n' "==== FATAL ERROR ====" >&2
+  printf '%s\n\n' "=====================" >&2
+  printf '%s\n\n' "$@" >&2
+  exit $rc
+}
+
+log () { printf '%s %s\n' "$(date +%F' '%T)" "$@"; }
+
+# SCRIPT
+[ ${UID} -gt 0 ] && die 1 "Only root may do that."
+
+if grep -q "XHC.*enabled" /proc/acpi/wakeup;then
+  echo XHC > /proc/acpi/wakeup
+fi
+
+# END
