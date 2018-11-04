@@ -18,16 +18,32 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 # Alexander Swen
-# Private contact: alex@swen.nu
 
 # CHANGELOG:
-# 2018-01-25	A.Swen	created.
+# 2018-01-25 A.Swen Created.
+# 2018-11-04 A.Swen Added:
+#                   - Suggest feature to support other tools (see examples).
+#                   - Link feature to support i3lock from within the i3 config.
+#                   - Function to transform JPG's to PNG files (because
+#                     https://github.com/i3/i3lock/issues/68).
+#                   - Choice to remove the original JPG file after converion.
 
+# This script requires the tools 'feh' and 'convert' (from Imagemagick)
 
-# This script should be run from a users cron
+## USAGE EXAMPLES:
+# This script could be run from a users cron
 # 15 * * * * /data/git/alex/scripts/backgroundchooser -d /data/backgrounds
 
-# Requires the tool feh
+# It could be launched each time i3 starts by adding this to the i3 config:
+# exec --no-startup-id /data/git/alex/scripts/backgroundchooser -d /data/backgrounds
+
+# It can also be used to set a random background before i3lock is started:
+# bindsym $win+l "exec /data/git/alex/scripts/backgroundchooser --dir /data/backgrounds --link /tmp/background.png; exec i3lock -tei /tmp/background.png -c 000000"
+
+# I also use it just before my laptop goes to sleep. I changed /usr/share/acpi-support/screenblank
+# which has a line with i3lock (I commented all other lock optiones)
+# su "$XUSER" -s /bin/sh -c "/usr/bin/i3lock -tei $(/data/git/alex/scripts/backgroundchooser -d /data/backgrounds -s) -c 000000"
+
 
 # SETTINGS
 date=$(date +%Y%m%d)
@@ -51,8 +67,8 @@ usage () {
   printf '%s\n' "===============" >&2
   printf '%s\n' "==== USAGE ====" >&2
   printf '%s\n\n' "===============" >&2
-  printf '%s\n' "Usage: ${me} " >&2
-  printf '%s\n\n' "example: ${me} " >&2
+  printf '%s\n' "Usage: ${me} [--dir|-d (directory with backgrounds)] [--suggest|-s] [--link|-l] [--remove_jpg|-r]" >&2
+  printf '%s\n\n' "example: ${me} --dir /data/backgrounds --link" >&2
   exit 1
 }
 
@@ -64,6 +80,20 @@ get_options () {
         export backgrounds_dir="$1"
         shift
         ;;
+      --link|-l)
+        shift
+        export link=1
+        export linktarget="$1"
+        shift
+        ;;
+      --remove_jpg|-r)
+        shift
+        export remove_jpg=1
+        ;;
+      --suggest|-s)
+        shift
+        export suggest=1
+        ;;
       -h|--help)
         usage
         ;;
@@ -74,31 +104,75 @@ get_options () {
   done
 }
 
+convert_to_png () {
+  [ -x /usr/bin/convert ] || die 20 "Convert not found."
+  old_background="$background"
+  background="$(echo $background|sed -e 's?\(^.*\.\)\(jp[e*]g\)$?\1png?')"
+  [ "$background" = "$old_background" ] && die 14 "Old and new background are the same."
+  [ -f "background" ] && die 15 "A file with the name $background already exists."
+  /usr/bin/convert "$old_background" "$background" || die 25 "Converting the background to png format failed."
+  [ $remove_jpg -eq 1 ] && rm "$old_background"
+}
+
 log () { printf '%s %s\n' "$(date +%F' '%T)" "$@"; }
+log_warn () { printf '%s %s\n' "$(date +%F' '%T)" "$@" >&2; }
 
 # SCRIPT
-log "Started ${me}"
 
+link=0
+suggest=0
+remove_jpg=0
 if [[ $# -gt 0 ]];then
   get_options $@
 fi
 
 # Switch to backgrounds dir or die
-[ -n "$backgrounds_dir" ] && cd $backgrounds_dir || backgrounds_dir=$(pwd)
+[ -n "$backgrounds_dir" ] || backgrounds_dir=$(pwd)
 
 # Build an array with background files
 shopt -s nocaseglob
-background_files=($(ls $filetypes))
+[ -d "$backgrounds_dir" ] && cd "$backgrounds_dir" || die "$backgrounds_dir not found."
+background_files=($filetypes)
+
+# The background selection
 if [ ${#background_files[*]} -gt 1 ];then
   # Pick a random background
-  background=${background_files[$(($RANDOM%${#background_files[*]}))]}
+  background_file="${background_files[$(($RANDOM%${#background_files[*]}))]}"
+  background="${backgrounds_dir}/${background_file}"
+  if [[ "$background" =~ ^(.*\.(jpeg|jpg)$) ]] ;then
+    convert_to_png "$background"
+  fi
+elif [ ${#background_files[*]} -eq 1 ];then
+  background="$backgrounds_dir/${background_files[0]}"
+  if [[ "$background" =~ ^(.*\.(jpeg|jpg)$) ]] ;then
+    convert_to_png "$background"
+  fi
 else
-  die 1 "No suitable backgrounds found in $backgrounds_dir."
+  if [ $suggest -eq 1 ];then
+    # If nothing to be found just throw the default
+    log_warn "No backgrounds found, falling back to default mosquito."
+    background=/home/alex/mug.png
+  else
+    die 1 "No suitable backgrounds found in $backgrounds_dir."
+  fi
 fi
 
-# Set that background
-log "I have chosen $background"
-feh --bg-scale $background
+# Use the background
+if [ $suggest -eq 1 ];then
+  echo $background
+elif [ $link -eq 1 ];then
+  if [ -z "$linktarget" ];then
+    die 10 "\$linktarget not set"
+  else
+    log "Linking $background to $linktarget."
+    ln -sf "$background" "$linktarget"
+  fi
+else
+  # Set that background
+  log "I have chosen $background"
+  feh --bg-scale $background
+fi
 
-log "Finished"
+exit 0
+
 # END
