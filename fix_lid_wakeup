@@ -25,7 +25,7 @@
 #
 #[Service]
 #ExecStart=/data/git/alex/scripts/fix_lid_wakeup
-#Type=onshot
+#Type=oneshot
 #RemainAfterExit=yes
 #
 #[Install]
