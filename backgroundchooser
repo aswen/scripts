@@ -35,14 +35,14 @@
 # 15 * * * * /data/git/alex/scripts/backgroundchooser -d /data/backgrounds
 
 # It could be launched each time i3 starts by adding this to the i3 config:
-# exec --no-startup-id /data/git/alex/scripts/backgroundchooser -d /data/backgrounds
+# exec --no-startup-id /data/git/alex/scripts/backgroundchooser --dir /data/backgrounds
 
 # It can also be used to set a random background before i3lock is started:
-# bindsym $win+l "exec /data/git/alex/scripts/backgroundchooser --dir /data/backgrounds --link /tmp/background.png; exec i3lock -tei /tmp/background.png -c 000000"
+# bindsym $win+l "exec --no-startup-id /data/git/alex/scripts/backgroundchooser --dir /data/backgrounds --link /tmp/background.png; exec --no-startup-id i3lock -tei /tmp/background.png -c 000000"
 
 # I also use it just before my laptop goes to sleep. I changed /usr/share/acpi-support/screenblank
 # which has a line with i3lock (I commented all other lock optiones)
-# su "$XUSER" -s /bin/sh -c "/usr/bin/i3lock -tei $(/data/git/alex/scripts/backgroundchooser -d /data/backgrounds -s) -c 000000"
+# su "$XUSER" -s /bin/sh -c "/usr/bin/i3lock -tei $(/data/git/alex/scripts/backgroundchooser --dir /data/backgrounds --suggest) -c 000000"
 
 
 # SETTINGS
@@ -170,7 +170,7 @@ elif [ $link -eq 1 ];then
 else
   # Set that background
   log "I have chosen $background"
-  feh --bg-scale $background
+  feh --bg-fill $background
 fi
 
 exit 0
