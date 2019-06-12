@@ -23,8 +23,7 @@
 
 # #And:
 # cat << EOF |sudo tee /etc/udev/rules.d/99-yubikey-autolock.rules
-# KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1050", ATTRS{idProduct}=="0113|0114|0115|0116|0120|0402|0403|0406|0407|0410",
-# TAG+="uaccess", GOTO="yubikey_end" ACTION=="remove", RUN+="/data/scripts/alex/yubikey-lock" LABEL="yubikey_end"
+# KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1050", ATTRS{idProduct}=="0113|0114|0115|0116|0120|0402|0403|0406|0407|0410", TAG+="uaccess", GOTO="yubikey_end" ACTION=="remove", RUN+="/data/scripts/alex/yubikey-lock" LABEL="yubikey_end"
 # EOF
 # sudo udevadm control --reload && sleep 1 && sudo /etc/init.d/udev restart
 
