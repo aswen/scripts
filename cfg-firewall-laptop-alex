@@ -458,7 +458,6 @@ $IPTABLES -A Icmp -p icmp -m comment --comment "Drop any remaining ICMP packets"
 #####################
 log "Create a Reject chain that rejects unwanted stuff."
 [ "$($IPTABLES -nL|awk '/Chain/ && /Reject/ {print $2}')" = "Reject" ] || $IPTABLES -N Reject
-$IPTABLES -A Reject
 log "Filter everything through the Invalid-source chain."
 $IPTABLES -A Reject -m comment --comment "Filter through Invalid-source chain" -j Invalid-source
 log "Filter everything through the Invalid-destination chain."
