@@ -52,7 +52,7 @@ do_sync () {
   [ -z "${1}" ] && die 4 soemthing went wrong. call alex
   echo "backing up ${1}..."
 echo " "
-  sudo /usr/bin/rsync -hrav --no-perms --no-owner --no-group "${1}" ${usb_disk}
+  sudo /usr/bin/rsync -hrav --size-only --no-perms --no-owner --no-group "${1}" ${usb_disk}
   echo " "
 }
 # SCRIPT
