@@ -1,0 +1,146 @@
+#!/bin/bash
+# order_photos_by_exif_date
+
+# When photo's from multiple sources are thrown into one directory it might
+# very well happen that the filenames screw the order. You see the serie of
+# camera one first, then the other.
+
+# This renames all photo's to YYYYMMDD_HHMMSS.SubSec_DESCRIPTION_###.jpg by using the date from exif
+# information.
+#
+# The ### part is an optional random 3 digit number. If multiple photo's are
+# taken on the same time the serial will be incremented.
+
+# CHANGELOG:
+# 2019-10-04 A.Swen	created.
+
+# SETTINGS
+date=$(date +%Y%m%d)
+me=$(basename $0)
+mydir=$(dirname $0)
+
+# FUNCTIONS
+die () {
+  rc=$1
+  shift
+  printf '%s\n' "=====================" >&2
+  printf '%s\n' "==== FATAL ERROR ====" >&2
+  printf '%s\n\n' "=====================" >&2
+  printf '%s\n\n' "$@" >&2
+  exit $rc
+}
+
+usage () {
+  printf '%s\n' "===============" >&2
+  printf '%s\n' "==== USAGE ====" >&2
+  printf '%s\n\n' "===============" >&2
+  printf '%s\n' "Usage: ${me} [-d|--directory <directory>] [-D|--description <description>]" >&2
+  printf '%s\n\n' "example: ${me} " >&2
+  printf '%s\n\n' "example: ${me} -d /data/foto/bla -D 'A night at the opera'" >&2
+  exit 1
+}
+get_options () {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --directory|-d)
+        shift
+        declare -r directory="$1"
+        shift
+        ;;
+      --description|-D)
+        shift
+        declare -r description="_${1}"
+        shift
+        ;;
+      -h|--help)
+        usage
+        ;;
+      *)
+        usage
+        ;;
+    esac
+  done
+}
+
+log () { printf '%s %s\n' "$(date +%F' '%T)" "$@"; }
+
+# SCRIPT
+log "Started ${me}"
+
+# Without exiftool we can't do much
+which exiftool 2>&1 > /dev/null || die 1 "Exiftool not found"
+which ffprobe 2>&1 > /dev/null || die 1 "Ffprobe not found"
+unset directory description
+
+if [[ $# -gt 0 ]];then
+  get_options
+fi
+[ -z "$directory" ] && directory="$(pwd)"
+[ -d "$directory" ] || die 2 "Directory '$directory' not found"
+
+find "$directory" -iname \*.jpg -o -iname \*.jpeg -o -iname \*.dng -o -iname \*.mp4|while read original_filename;do
+
+  unset create_date_time
+
+  # Try to get the date/time from the file.
+  case $original_filename in
+    *.jpg|*.JPG|*.jpeg)
+      create_date_time=$(exiftool -S -SubSecCreateDate "$original_filename"|sed -e 's?SubSecCreateDate: ??g' -e 's?:??g' -e 's? ?_?' -e 's?\.?_?g')
+      if [ -z "$create_date_time" ];then
+        # Try the DateTimeOriginal field
+        create_date_time=$(exiftool -S -DateTimeOriginal "$original_filename"|sed -e 's?DateTimeOriginal: ??g' -e 's?:??g' -e 's? ?_?' -e 's?\.?_?g')
+      fi
+      if [ -z "$create_date_time" ];then
+        # Try the GPSDateTime field
+        unset gps_date_time
+        gps_date_time=$(exiftool -S -GPSDateTime "$original_filename"|sed -e 's?GPSDateTime: ??' -e 's?:?-?' -e 's?:?-?'  -e 's? ?T?')
+        if [ -n "$gps_date_time" ];then
+          create_date_time=$(date -d "$gps_date_time" +%Y%m%d_%H%M%S)
+        fi
+      fi
+      if [ -z "$create_date_time" ];then
+        # Try the FileModifyDate field
+        file_modify_date=$(exiftool -S -FileModifyDate "$original_filename"|sed -e 's?FileModifyDate: ??' -e 's?:?-?' -e 's?:?-?')
+        if [ -n "$file_modify_date" ];then
+          create_date_time=$(date -d "$file_modify_date" +%Y%m%d_%H%M%S)
+        fi
+      fi
+      ext=jpg
+    ;;
+    *.dng|*.DNG)
+      create_date_time=$(exiftool -S -DateTimeOriginal "$original_filename"|sed -e 's?DateTimeOriginal: ??g' -e 's?:??g' -e 's? ?_?' -e 's?\.?_?g') || die 4 "exiftool failed on $original_filename"
+      ext=dng
+    ;;
+    *.mp4|*MP4)
+      create_date_time=$(date -d $(ffprobe "$original_filename" 2>&1 |grep creation_time|head -1|sed -e 's?\s\+creation_time\s\+:\s\+??') +%Y%m%d_%H%M%S)||die 5 "Cannot get creation_time from file $original_filename".
+      ext=mp4
+    ;;
+    *)
+      log "I don't know how to get a date from $original_filename"
+      continue
+    ;;
+  esac
+
+  # If no create_date_time can be extracted we can't do much more.
+  if [ -z "$create_date_time" ];then
+    fn=$(basename "$original_filename")
+    log "Can't find a date/time for $fn. We don't change it."
+    unset fn
+    continue
+  fi
+
+  # With the information we have we can construct a new filename
+  new_filename="$directory/${create_date_time}${description}.$ext"
+
+  # Check for duplicates. Should there be one: add a random number.
+  until [ ! -f "$new_filename" ];do
+    log "$new_filename exists, choosing new random serial."
+    new_filename="$directory/${create_date_time}${description}_$((RANDOM % 999)).$ext"
+  done
+
+  # Rename the file.
+  echo Renaming \"$(basename "$original_filename")\" to \"$(basename "$new_filename")\"
+  mv "$original_filename" "$new_filename"
+done
+
+# END
