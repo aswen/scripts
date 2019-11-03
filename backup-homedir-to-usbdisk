@@ -69,6 +69,7 @@ find_usb_mount () {
 # SCRIPT
 find_usb_mount
 doeldir="$usbmount/DOCUMENTEN/DOCUMENTEN $(date +%y-%m-%d)"
+[ -d "doeldir" ] || mkdir -p "$doeldir"
 time /usr/bin/rsync -av --no-perms --no-owner --no-group --size-only "${HOME}/DOCUMENTEN/" "$doeldir" || die 5 "Er ging iets fout. Bel Alex."
 
 printf '%s\n\n' "Ik haal nog wat informatie op ter controle:"
