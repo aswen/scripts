@@ -51,6 +51,7 @@ get_options () {
   [ $# -gt 0 ]||usage
   while getopts "s:d:" opt;do
     case ${opt} in
+      n) export dryrun='-n' ;;
       s) export source="`echo $OPTARG`" ;;
       d) export destination="`echo $OPTARG`" ;;
       *) usage;;
@@ -68,7 +69,7 @@ get_options $@
 [ -n "$destination" ] || destination=/netwerk/home-$LOGNAME
 
 log "Backing up $source naar $destination."
-/usr/bin/rsync $rsyncopts "$source" "$destination"
+/usr/bin/rsync $rsyncopts $dryrun "$source" "$destination"
 
 log " "
 log "alles wat je hierboven ziet is gebackupped  (plus alles wat al was gebackupped natuurlijk)"
