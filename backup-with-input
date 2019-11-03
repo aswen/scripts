@@ -30,7 +30,7 @@
 date=$(date +%Y%m%d)
 me=$(basename $0)
 mydir=$(dirname $0)
-rsyncopts="-av --no-perms --no-owner --no-group --exclude=lost+found --exclude=.cache --exclude=.thumbnails --delete --size-only"
+rsyncopts="-av --no-perms --no-owner --no-group --exclude=.~lock* --exclude=~/.config/libreoffice/*/user/backup --exclude=lost+found --exclude=.cache --exclude=.thumbnails --delete --size-only"
 
 # FUNCTIONS
 die () {
