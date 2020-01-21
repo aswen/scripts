@@ -78,7 +78,7 @@ fi
 [ -z "$directory" ] && directory="$(pwd)"
 [ -d "$directory" ] || die 2 "Directory '$directory' not found"
 
-find "$directory" -iname \*.jpg -o -iname \*.jpeg -o -iname \*.png -o -iname \*.dng -o -iname \*.mp4 -o -iname \*.mov|while read original_filename;do
+find "$directory" -iname \*.jpg -o -iname \*.jpeg -o -iname \*.[pd]ng -o -iname \*.mp4 -o -iname \*.mov -o -iname \*.hei[cf] |while read original_filename;do
 
   unset create_date_time
 
@@ -133,6 +133,27 @@ find "$directory" -iname \*.jpg -o -iname \*.jpeg -o -iname \*.png -o -iname \*.
         *.mov|*.MOV)
           ext=mov;;
       esac
+    ;;
+    *.hei?|*.HEI?)
+      # Figure out the creation time first
+      file_modify_date=$(exiftool -S -FileModifyDate "$original_filename"|sed -e 's?FileModifyDate: ??' -e 's?:?-?' -e 's?:?-?')
+      if [ -n "$file_modify_date" ];then
+        create_date_time=$(date -d "$file_modify_date" +%Y%m%d_%H%M%S)
+      fi
+
+      # Since there isn't much support for the HEIF format yet I convert the container to a simple jpg
+      # Check if the tool is present and executable
+      TIFIG="/data/software/tifig/tifig"
+      [ -x "$TIFIG" ] || die 6 "Tifig should be downloaded from https://github.com/monostream/tifig/releases ."
+      temp_filename="$(echo "$original_filename"|sed -e 's?hei[fc]?jpg?i')"
+
+      # Convert the file to jpg
+      "$TIFIG" -i "$original_filename" -o "${temp_filename}" && rm "$original_filename" || die 7 "Tifig failed."
+
+      # Further down we can just process the file as a jpg
+      original_filename="$temp_filename"
+      ext=jpg
+      unset temp_filename
     ;;
     *)
       log "I don't know how to get a date from $original_filename"
