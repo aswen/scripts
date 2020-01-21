@@ -78,42 +78,61 @@ fi
 [ -z "$directory" ] && directory="$(pwd)"
 [ -d "$directory" ] || die 2 "Directory '$directory' not found"
 
-find "$directory" -iname \*.jpg -o -iname \*.jpeg -o -iname \*.dng -o -iname \*.mp4|while read original_filename;do
+find "$directory" -iname \*.jpg -o -iname \*.jpeg -o -iname \*.png -o -iname \*.dng -o -iname \*.mp4 -o -iname \*.mov|while read original_filename;do
 
   unset create_date_time
 
   # Try to get the date/time from the file.
   case $original_filename in
-    *.jpg|*.JPG|*.jpeg)
+    *.jpg|*.JPG|*.jpeg|*.png|*.PNG)
+
+      # First try the most common case: SubSecCreateDate is set
       create_date_time=$(exiftool -S -SubSecCreateDate "$original_filename"|sed -e 's?SubSecCreateDate: ??g' -e 's?:??g' -e 's? ?_?' -e 's?\.?_?g')
+
+      # If that failed try the DateTimeOriginal field
       if [ -z "$create_date_time" ];then
-        # Try the DateTimeOriginal field
         create_date_time=$(exiftool -S -DateTimeOriginal "$original_filename"|sed -e 's?DateTimeOriginal: ??g' -e 's?:??g' -e 's? ?_?' -e 's?\.?_?g')
       fi
+
+      # If that failed try the GPSDateTime field
       if [ -z "$create_date_time" ];then
-        # Try the GPSDateTime field
         unset gps_date_time
         gps_date_time=$(exiftool -S -GPSDateTime "$original_filename"|sed -e 's?GPSDateTime: ??' -e 's?:?-?' -e 's?:?-?'  -e 's? ?T?')
         if [ -n "$gps_date_time" ];then
           create_date_time=$(date -d "$gps_date_time" +%Y%m%d_%H%M%S)
         fi
       fi
+
+      # If that failed try the FileModifyDate field
       if [ -z "$create_date_time" ];then
-        # Try the FileModifyDate field
         file_modify_date=$(exiftool -S -FileModifyDate "$original_filename"|sed -e 's?FileModifyDate: ??' -e 's?:?-?' -e 's?:?-?')
         if [ -n "$file_modify_date" ];then
           create_date_time=$(date -d "$file_modify_date" +%Y%m%d_%H%M%S)
         fi
       fi
-      ext=jpg
+
+      # Set the file extention
+      case $original_filename in
+        *.jpg|*.JPG|*.jpeg)
+          ext=jpg;;
+        *.png|*.PNG)
+          ext=png;;
+      esac
     ;;
     *.dng|*.DNG)
       create_date_time=$(exiftool -S -DateTimeOriginal "$original_filename"|sed -e 's?DateTimeOriginal: ??g' -e 's?:??g' -e 's? ?_?' -e 's?\.?_?g') || die 4 "exiftool failed on $original_filename"
       ext=dng
     ;;
-    *.mp4|*MP4)
+    *.mp4|*MP4|*.mov|*.MOV)
       create_date_time=$(date -d $(ffprobe "$original_filename" 2>&1 |grep creation_time|head -1|sed -e 's?\s\+creation_time\s\+:\s\+??') +%Y%m%d_%H%M%S)||die 5 "Cannot get creation_time from file $original_filename".
-      ext=mp4
+
+      # Set the file extention
+      case $original_filename in
+        *.mp4|*MP4)
+          ext=mp4;;
+        *.mov|*.MOV)
+          ext=mov;;
+      esac
     ;;
     *)
       log "I don't know how to get a date from $original_filename"
