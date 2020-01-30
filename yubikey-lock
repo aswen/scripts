@@ -12,7 +12,7 @@
 # Type=simple
 # Environment=DISPLAY=:0
 # ExecStartPre=/data/git/alex/scripts/backgroundchooser --dir /data/backgrounds --link /tmp/background.png
-# ExecStart=/usr/bin/i3lock -n -t -e -i /tmp/background.png -c 000000
+# ExecStart=/usr/bin/i3lock -n -t -i /tmp/background.png -c 000000
 #
 # [Install]
 # WantedBy=multi-user.target

@@ -144,7 +144,7 @@ if [[ "$status" == "Discharging" ]];then
   if [[ $capacity -le $crit ]];then
     notify crit
     sleep 30
-    /usr/bin/i3lock -tei /home/alex/mug.png -c 000000 &
+    /usr/bin/i3lock -ti /home/alex/mug.png -c 000000 &
     sudo /usr/sbin/pm-suspend
   elif [[ $capacity -le $warn ]];then
     notify warn
