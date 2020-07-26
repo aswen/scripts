@@ -14,9 +14,12 @@ end
 
 shelters = JSON.parse(File.read(shelters_file))
 
-printf("%s\r\n%s\r\n%s\r\n",'<?xml version="1.0" encoding="UTF-8"?>', '<kml xmlns="http://earth.google.com/kml/2.0">', '<Document>')
+printf("%s\r\n",'<?xml version="1.0" encoding="UTF-8"?>')
+printf("%s\r\n",'<kml xmlns="http://earth.google.com/kml/2.0">')
+printf("<Document>\r\n")
+printf("<name>Shelters in Denmark.</name>\r\n")
 shelters.each do |shelter|
-  printf("<Placemark>\r\n<name>%s</name>\r\n<description>", shelter['name'].gsub(/"/, '').gsub(/&/, '&amp;'))
+  printf("<Placemark>\r\n<styleUrl>#placemark-orange</styleUrl>\r\n<name>%s</name>\r\n<description>", shelter['name'].gsub(/"/, '').gsub(/&/, '&amp;'))
   printf("Address: %s, ", shelter['address']) unless ( shelter['address'] == '' )
   counter = 1
   shelter['features'].each do |x|
