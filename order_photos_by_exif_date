@@ -172,6 +172,13 @@ find "$directory" -iname \*.jpg -o -iname \*.jpeg -o -iname \*.[pd]ng -o -iname 
   # With the information we have we can construct a new filename
   new_filename="$directory/${create_date_time}${description}.$ext"
 
+  # If this script is run a second time in the same dir it would create false copies
+  # because the script would try to avoid duplicates.
+  if [[ "$original_filename" = "$new_filename" ]];then
+    log "$original_filename is already processed, I'll skip it."
+    continue
+  fi
+
   # Check for duplicates. Should there be one: add a random number.
   until [ ! -f "$new_filename" ];do
     log "$new_filename exists, choosing new random serial."
@@ -180,7 +187,7 @@ find "$directory" -iname \*.jpg -o -iname \*.jpeg -o -iname \*.[pd]ng -o -iname 
 
   # Rename the file.
   echo Renaming \"$(basename "$original_filename")\" to \"$(basename "$new_filename")\"
-  mv "$original_filename" "$new_filename"
+  echo mv "$original_filename" "$new_filename"
 done
 
 # END
