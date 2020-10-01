@@ -50,7 +50,7 @@ date=$(date +%Y%m%d)
 me=$(basename $0)
 mydir=$(dirname $0)
 # Case insensitive list of filetypes
-filetypes='*.jpg *.jpeg *.png'
+filetypes='*.png'
 
 # FUNCTIONS
 die () {
