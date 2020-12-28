@@ -41,7 +41,7 @@ echo "==================== Configure Firewall ===================="
 [ -f /etc/sysconfig/iptables ] && cp /etc/sysconfig/iptables /etc/sysconfig/iptables-$(date +%Y%m%d)
 
 echo "Configure firewall"
-IPTABLES=/sbin/iptables
+IPTABLES=/usr/sbin/iptables
 IP6TABLES=/sbin/ip6tables
 DEPMOD=/sbin/depmod
 MODPROBE=/sbin/modprobe
@@ -328,7 +328,7 @@ $IPTABLES -A INPUT -p udp -j REJECT --reject-with icmp-port-unreachable
 $IPTABLES -A INPUT -p tcp -j REJECT --reject-with tcp-reset
 
 # nieuwe regels opslaan
-/sbin/iptables-save > /etc/sysconfig/iptables
+/usr/sbin/iptables-save > /etc/sysconfig/iptables
 
 /etc/init.d/iptables restart
 

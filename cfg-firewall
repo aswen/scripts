@@ -57,7 +57,7 @@ echo "==================== Configure Firewall ===================="
 [ -f "${rulesfile}" ] && cp "${rulesfile}" "${rulesfile}-$(date +%Y%m%d)"
 
 echo "Configure firewall"
-IPTABLES=/sbin/iptables
+IPTABLES=/usr/sbin/iptables
 IP6TABLES=/sbin/ip6tables
 DEPMOD=/sbin/depmod
 MODPROBE=/sbin/modprobe
@@ -102,8 +102,8 @@ cat << EOF > /etc/init.d/iptables
 # Short-Description: Set up iptables rules
 ### END INIT INFO
 
-IPTABLES=/sbin/iptables
-IPTABLESRESTORE=/sbin/iptables-restore
+IPTABLES=/usr/sbin/iptables
+IPTABLESRESTORE=/usr/sbin/iptables-restore
 IP6TABLES=/sbin/ip6tables
 DEPMOD=/sbin/depmod
 MODPROBE=/sbin/modprobe
@@ -297,7 +297,7 @@ sleep 1
 sleep 1
 
 echo "saving rules to ${rulesfile}"
-/sbin/iptables-save >> ${rulesfile}
+/usr/sbin/iptables-save >> ${rulesfile}
 
 echo "restarting iptables"
 /etc/init.d/iptables restart

@@ -173,7 +173,7 @@ log "Configure Firewall"
 log "Creating backup of existing firewall config. (if any)."
 [ -f "${rulesfile}" ] && cp "${rulesfile}" "${rulesfile}-$(date +%Y%m%d)"
 
-IPTABLES=/sbin/iptables
+IPTABLES=/usr/sbin/iptables
 IP6TABLES=/sbin/ip6tables
 MODPROBE=/sbin/modprobe
 
@@ -523,6 +523,6 @@ sleep 1
 sleep 1
 
 log "Saving iptables rules to $rulesfile"
-/sbin/iptables-save >> ${rulesfile}
+/usr/sbin/iptables-save >> ${rulesfile}
 
 log "Done ${me}"
