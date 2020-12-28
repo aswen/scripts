@@ -21,7 +21,8 @@
 # Private contact: alex@swen.nu
 
 # CHANGELOG:
-# 20200326	A.Swen	created.
+# 20200326 A.Swen	created.
+# 20201103 A.Swen Add a dirty way to tune the camera a bit.
 
 # SETTINGS
 date=$(date +%Y%m%d)
@@ -44,5 +45,7 @@ saver_off () {
 
 saver_off
 zoom
+# Dirty way to tune the camera a bit.
+v4l2-ctl -d /dev/video4 --set-ctrl=white_balance_temperature_auto=0 && v4l2-ctl -d /dev/video4 --set-ctrl=white_balance_temperature=3200,sharpness=200
 saver_on
 # END
