@@ -26,6 +26,9 @@
 
 # INSTALLATION
 
+# > NOTE: Some systems have a desktop notifier `dunst` installed. That's a very
+#         basic notifier program. When possible xfce4-notifyd is much prettier
+
 # This script needs three preparationscteps:
 # 1. Install notify-send.
 # 2. You need to tell cron to run this every now and then.
