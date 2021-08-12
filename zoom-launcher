@@ -28,6 +28,8 @@
 date=$(date +%Y%m%d)
 me=$(basename $0)
 mydir=$(dirname $0)
+video_device=/dev/video4
+
 # FUNCTIONS
 
 saver_on () {
@@ -44,8 +46,8 @@ saver_off () {
 # SCRIPT
 
 saver_off
+v4l2-ctl -d $video_device --set-ctrl=white_balance_temperature_auto=0,power_line_frequency=1
+v4l2-ctl -d $video_device --set-ctrl=white_balance_temperature=3200,sharpness=200
 zoom
-# Dirty way to tune the camera a bit.
-v4l2-ctl -d /dev/video4 --set-ctrl=white_balance_temperature_auto=0 && v4l2-ctl -d /dev/video4 --set-ctrl=white_balance_temperature=3200,sharpness=200
 saver_on
 # END
