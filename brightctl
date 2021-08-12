@@ -55,11 +55,13 @@ usage () {
 # SCRIPT
 [ ${UID} -gt 0 ] && die 1 only root may do that
 case $HOSTNAME in
-  nvc3691)
+  nac36663|nvc3691)
     ctlfile=/sys/class/backlight/intel_backlight/brightness
+    max_brightness=19200
     ;;
   laptop-nico-aardbei)
     ctlfile=/sys/class/backlight/acpi_video0/brightness
+    max_brightness=1500
     ;;
   *)
     die 1 "Dunno the ctlfile."
@@ -70,9 +72,9 @@ esac
 br=$(cat ${ctlfile})
 
 # vary in steps
-if [ $br -ge 1400 -a $1 == "up" ];then
-  step=$((1500-$br))
-elif [ $br -le 1500 -a $br -gt 1000 ];then
+if [ $br -ge $((max_brightness-100)) -a $1 == "up" ];then
+  step=$((max_brightness-$br))
+elif [ $br -le $max_brightness -a $br -gt 1000 ];then
   step=100
 elif [ $br -le 1000 -a $br -gt 100 ];then
   step=50
