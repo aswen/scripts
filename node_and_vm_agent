@@ -1,0 +1,147 @@
+#!/bin/bash
+# node_and_vm_agent
+# install node_exporter and victoriametrics agent
+
+# Copyright (C) 2014-2015 Alexander Swen <alex@swen.nu>
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Alexander Swen
+# Private contact: alex@swen.nu
+
+# CHANGELOG:
+# 20211216 A.Swen	created.
+
+# SETTINGS
+date=$(date +%Y%m%d)
+me=$(basename $0)
+mydir=$(dirname $0)
+node_exporter_version=1.3.1
+node_exporter_url="https://github.com/prometheus/node_exporter/releases/download/v$node_exporter_version/node_exporter-$node_exporter_version.linux-amd64.tar.gz"
+vm_agent_version=1.70.0
+vm_agent_url="https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v$vm_agent_version/vmutils-amd64-v$vm_agent_version.tar.gz"
+vm_agent_remote_url='http://ardbeg.barchem.de-eekhoorn.eu:8428/api/v1/write'
+
+# FUNCTIONS
+die () {
+  rc=$1
+  shift
+  printf '%s\n' "=====================" >&2
+  printf '%s\n' "==== FATAL ERROR ====" >&2
+  printf '%s\n\n' "=====================" >&2
+  printf '%s\n\n' "$@" >&2
+  exit $rc
+}
+
+log () { printf '%s %s\n' "$(date +%F' '%T)" "$@"; }
+
+# SCRIPT
+[ ${UID} -gt 0 ] && die 1 "Only root may do that."
+log "Started ${me}"
+
+# Node Exporter
+[ -d /opt/node_exporter ] || install -dm 0755 /opt/node_exporter
+[ -d /opt/node_exporter/textfile_collector ] || install -dm 0755 /opt/node_exporter/textfile_collector
+curl -sLo - $node_exporter_url |tar zxvf - -C /opt/node_exporter
+ln -s node_exporter-$node_exporter_version.linux-amd64/node_exporter /opt/node_exporter
+[ -s /etc/systemd/system/node_exporter.service ] || cat << EOF > /etc/systemd/system/node_exporter.service
+[Unit]
+Description=Node Exporter
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/node_exporter
+ExecStart=/opt/node_exporter/node_exporter --collector.textfile.directory=/opt/node_exporter/textfile_collector --collector.netstat.fields=(.*) --collector.ntp --collector.systemd
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=node_exporter
+TimeoutStartSec=0
+Restart=on-failure
+StartLimitBurst=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+[ -s /etc/rsyslog.d/node_exporter.conf ] || cat << EOF > /etc/rsyslog.d/node_exporter.conf
+if \$programname == 'node_exporter' then /var/log/node_exporter.log
+& stop
+EOF
+
+[ -s /etc/logrotate.d/node_exporter ] || cat << EOF > /etc/logrotate.d/node_exporter
+/var/log/node_exporter.log {
+  daily
+  rotate 7
+  missingok
+  create 644 victoriametrics victoriametrics
+  compress
+}
+EOF
+
+# Victoria Metrics Agent
+getent group victoriametrics > /dev/null || groupadd -r victoriametrics
+getent passwd victoriametrics > /dev/null || useradd -g victoriametrics -d /opt/victoriametrics -s /sbin/nologin --system victoriametrics
+[ -d /opt/victoriametrics ] || install -dm 0755 -o victoriametrics -g victoriametrics /opt/victoriametrics
+curl -sLo - $vm_agent_url | tar zxvf - -C /opt/victoriametrics
+
+[ -s /etc/systemd/system/vm-agent.service ] || cat << EOF > /etc/systemd/system/vm-agent.service
+[Unit]
+Description=Victoria Metrics Agent Service
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/victoriametrics
+User=victoriametrics
+Group=victoriametrics
+ExecStart=/opt/victoriametrics/vmagent-prod -promscrape.config /opt/victoriametrics/scraper.yml -remoteWrite.url=$vm_agent_remote_url -loggerDisableTimestamps
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=vm-agent
+TimeoutStartSec=0
+Restart=on-failure
+StartLimitBurst=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+[ -s /etc/rsyslog.d/vm-agent.conf ] || cat << EOF > /etc/rsyslog.d/vm-agent.conf
+if $programname == 'vm-agent' then /var/log/vm-agent.log
+& stop
+EOF
+
+[ -s /etc/logrotate.d/vm-agent ] || cat << EOF > /etc/logrotate.d/vm-agent
+/var/log/vm-agent.log {
+  daily
+  rotate 7
+  missingok
+  create 644 victoriametrics victoriametrics
+  compress
+}
+EOF
+[ -s /opt/victoriametrics/scraper.yml ] || cat << EOF > /opt/victoriametrics/scraper.yml
+scrape_configs:
+  - job_name: node
+    scrape_interval: 15s
+    static_configs:
+    - targets: ['localhost:9100']
+EOF
+
+systemctl daemon-reload
+systemctl restart rsyslog.service
+systemctl restart node_exporter.service
+systemctl restart vm-agent.service
+
+log "Finished"
+# END
