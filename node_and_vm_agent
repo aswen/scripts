@@ -117,7 +117,7 @@ WantedBy=multi-user.target
 EOF
 
 [ -s /etc/rsyslog.d/vm-agent.conf ] || cat << EOF > /etc/rsyslog.d/vm-agent.conf
-if $programname == 'vm-agent' then /var/log/vm-agent.log
+if \$programname == 'vm-agent' then /var/log/vm-agent.log
 & stop
 EOF
 
@@ -131,11 +131,21 @@ EOF
 }
 EOF
 [ -s /opt/victoriametrics/scraper.yml ] || cat << EOF > /opt/victoriametrics/scraper.yml
+global:
+  scrape_interval: 15s
+  static_configs:
+  - labels:
+    hostname: $(hostname)
+
 scrape_configs:
   - job_name: node
-    scrape_interval: 15s
+    relabel_configs:
+      - source_labels: [__hostname__]
+        target_label: instance
+        replacement: "$(hostname)"
     static_configs:
     - targets: ['localhost:9100']
+
 EOF
 
 systemctl daemon-reload
