@@ -1,0 +1,117 @@
+#!/bin/bash
+# laptop-info
+# Prints some info about the current device
+
+# I want to know:
+# - System info
+# - memory size
+# - CPU info
+# - Disk size
+# - Disk health info
+# - Display info
+
+# Copyright (C) 2014-2015 Alexander Swen <alex@swen.nu>
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Alexander Swen
+# Private contact: alex@swen.nu
+
+# CHANGELOG:
+# 2023-04-20	A.Swen	created.
+
+# SETTINGS
+date=$(date +%Y%m%d)
+me=$(basename $0)
+mydir=$(dirname $0)
+
+
+# FUNCTIONS
+die () {
+  rc=$1
+  shift
+  printf '%s\n' "=====================" >&2
+  printf '%s\n' "==== FATAL ERROR ====" >&2
+  printf '%s\n\n' "=====================" >&2
+  printf '%s\n\n' "$@" >&2
+  exit $rc
+}
+
+usage () {
+  printf '%s\n' "===============" >&2
+  printf '%s\n' "==== USAGE ====" >&2
+  printf '%s\n\n' "===============" >&2
+  printf '%s\n' "Usage: ${me} " >&2
+  printf '%s\n\n' "example: ${me} " >&2
+  exit 1
+}
+get_options () {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --thing1|-a)
+        shift
+        declare -r thing="$1"
+        shift
+        ;;
+      --thing2|-b)
+        shift
+        declare -r other_thing="$1"
+        shift
+        ;;
+      -h|--help)
+        usage
+        ;;
+      *)
+        usage
+        ;;
+    esac
+  done
+}
+
+
+log () { printf '%s %s\n' "$(date +%F' '%T)" "$@"; }
+
+# SCRIPT
+[ ${UID} -gt 0 ] && die 1 "Only root may do that."
+log "$(date) started ${me}"
+if [[ $# -gt 0 ]];then
+  get_options
+fi
+
+# System info
+log "System information:"
+dmidecode -t system|grep -E "Product Name|Serial Number"
+echo
+
+# CPU
+log "CPU:"
+dmidecode -t processor|grep -E 'Family|Manufacturer|(Thread|Core) Count:|Max Speed:'
+echo
+
+# Memory
+log "Memory:"
+dmidecode -t memory | grep -E '^Physical Memory Array|Number Of Devices|^Memory Device|^\s+(Size|Type:|Manufacturer|Serial Number|Rank|Configured Memory Speed|Part Number|Locator)'
+echo
+
+# Disk
+log "Disk:"
+smartctl -a /dev/nvme0n1|grep -E '^(Model|Serial|Namespace 1 Size|Temperature|Available Spare:|Percentage Used|Warning|Critical)|Errors|self-assess'
+echo
+
+# Display
+log "Display:"
+lshw -c display
+xrandr
+log "$(date) finished"
+# END
