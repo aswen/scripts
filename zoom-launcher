@@ -46,7 +46,7 @@ saver_off () {
 # SCRIPT
 
 saver_off
-v4l2-ctl -d $video_device --set-ctrl=white_balance_temperature_auto=0,power_line_frequency=1
+v4l2-ctl -d $video_device --set-ctrl=white_balance_automatic=0,power_line_frequency=1
 v4l2-ctl -d $video_device --set-ctrl=white_balance_temperature=3200,sharpness=200
 zoom
 saver_on

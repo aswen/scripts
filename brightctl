@@ -57,11 +57,11 @@ usage () {
 case $HOSTNAME in
   nac36663|nvc3691)
     ctlfile=/sys/class/backlight/intel_backlight/brightness
-    max_brightness=19200
+    max_brightness=$(cat /sys/class/backlight/intel_backlight/max_brightness)
     ;;
   laptop-nico-aardbei)
     ctlfile=/sys/class/backlight/acpi_video0/brightness
-    max_brightness=1500
+    max_brightness=$(cat /sys/class/backlight/acpi_video0/max_brightness)
     ;;
   *)
     die 1 "Dunno the ctlfile."
@@ -74,6 +74,8 @@ br=$(cat ${ctlfile})
 # vary in steps
 if [ $br -ge $((max_brightness-100)) -a $1 == "up" ];then
   step=$((max_brightness-$br))
+elif [ $br -le $max_brightness -a $br -gt 10000 ];then
+  step=1000
 elif [ $br -le $max_brightness -a $br -gt 1000 ];then
   step=100
 elif [ $br -le 1000 -a $br -gt 100 ];then
@@ -85,9 +87,10 @@ elif [ $br -le 10 ];then
 fi
 
 case $1 in
-  up) newbr=$((br+step));;
-down) newbr=$((br-step));;
-  *) usage;;
+  max)  newbr=$max_brightness;;
+  up)   newbr=$((br+step));;
+  down) newbr=$((br-step));;
+  *)    usage;;
 esac
 echo ${newbr} > ${ctlfile}
 

@@ -27,11 +27,6 @@
 date=$(date +%Y%m%d)
 me=$(basename $0)
 mydir=$(dirname $0)
-node_exporter_version=1.3.1
-node_exporter_url="https://github.com/prometheus/node_exporter/releases/download/v$node_exporter_version/node_exporter-$node_exporter_version.linux-amd64.tar.gz"
-vm_agent_version=1.70.0
-vm_agent_url="https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v$vm_agent_version/vmutils-amd64-v$vm_agent_version.tar.gz"
-vm_agent_remote_url='http://ardbeg.barchem.de-eekhoorn.eu:8428/api/v1/write'
 
 # FUNCTIONS
 die () {
@@ -50,19 +45,35 @@ log () { printf '%s %s\n' "$(date +%F' '%T)" "$@"; }
 [ ${UID} -gt 0 ] && die 1 "Only root may do that."
 log "Started ${me}"
 
+case $(uname -m) in
+  x86_64) architecture='amd64' ;node_exporter_architecture=$architecture;;
+  armv6l) architecture='arm' ;node_exporter_architecture='armv6' ;;
+  *) echo "Failed to detect processor architecture" ; exit 1 ;;
+esac
+
+[ -x /usr/bin/jq ] || die 2 "JQ not found"
+node_exporter_tagname=$(curl -s https://api.github.com/repos/prometheus/node_exporter/releases/latest | jq -r '.tag_name' )
+node_exporter_version=${node_exporter_tagname#v}
+node_exporter_url="https://github.com/prometheus/node_exporter/releases/download/$node_exporter_tagname/node_exporter-$node_exporter_version.linux-$node_exporter_architecture.tar.gz"
+vm_agent_tagname=$(curl -s https://api.github.com/repos/VictoriaMetrics/VictoriaMetrics/releases/latest | jq -r '.tag_name' )
+vm_agent_version=${vm_agent_tagname#v}
+vm_agent_url="https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/$vm_agent_tagname/vmutils-linux-$architecture-$vm_agent_tagname.tar.gz"
+vm_agent_remote_url='http://ardbeg.barchem.de-eekhoorn.eu:8428/api/v1/write'
+
+
 # Node Exporter
 [ -d /opt/node_exporter ] || install -dm 0755 /opt/node_exporter
 [ -d /opt/node_exporter/textfile_collector ] || install -dm 0755 /opt/node_exporter/textfile_collector
 curl -sLo - $node_exporter_url |tar zxvf - -C /opt/node_exporter
-ln -s node_exporter-$node_exporter_version.linux-amd64/node_exporter /opt/node_exporter
-[ -s /etc/systemd/system/node_exporter.service ] || cat << EOF > /etc/systemd/system/node_exporter.service
+ln -sf node_exporter-$node_exporter_version.linux-$node_exporter_architecture/node_exporter /opt/node_exporter
+cat << EOF > /etc/systemd/system/node_exporter.service
 [Unit]
 Description=Node Exporter
 After=network.target
 
 [Service]
 WorkingDirectory=/opt/node_exporter
-ExecStart=/opt/node_exporter/node_exporter --collector.textfile.directory=/opt/node_exporter/textfile_collector --collector.netstat.fields=(.*) --collector.ntp --collector.systemd
+ExecStart=/opt/node_exporter/node_exporter --collector.textfile.directory=/opt/node_exporter/textfile_collector --collector.netstat.fields=(.*) --collector.ntp --collector.systemd --collector.vmstat.fields=(.*) --collector.processes --collector.ethtool --collector.zfs
 StandardOutput=syslog
 StandardError=syslog
 SyslogIdentifier=node_exporter
@@ -95,7 +106,7 @@ getent passwd victoriametrics > /dev/null || useradd -g victoriametrics -d /opt/
 [ -d /opt/victoriametrics ] || install -dm 0755 -o victoriametrics -g victoriametrics /opt/victoriametrics
 curl -sLo - $vm_agent_url | tar zxvf - -C /opt/victoriametrics
 
-[ -s /etc/systemd/system/vm-agent.service ] || cat << EOF > /etc/systemd/system/vm-agent.service
+cat << EOF > /etc/systemd/system/vm-agent.service
 [Unit]
 Description=Victoria Metrics Agent Service
 After=network.target
@@ -104,7 +115,7 @@ After=network.target
 WorkingDirectory=/opt/victoriametrics
 User=victoriametrics
 Group=victoriametrics
-ExecStart=/opt/victoriametrics/vmagent-prod -promscrape.config /opt/victoriametrics/scraper.yml -remoteWrite.url=$vm_agent_remote_url -loggerDisableTimestamps
+ExecStart=/opt/victoriametrics/vmagent-prod -promscrape.config /opt/victoriametrics/scraper.yml -promscrape.config.strictParse=false -remoteWrite.url=$vm_agent_remote_url -loggerDisableTimestamps
 StandardOutput=syslog
 StandardError=syslog
 SyslogIdentifier=vm-agent
@@ -152,6 +163,8 @@ systemctl daemon-reload
 systemctl restart rsyslog.service
 systemctl restart node_exporter.service
 systemctl restart vm-agent.service
+systemctl enable node_exporter.service
+systemctl enable vm-agent.service
 
 log "Finished"
 # END
