@@ -106,7 +106,7 @@ echo
 
 # Disk
 log "Disk:"
-smartctl -a /dev/nvme0n1 | grep -E '^(Model|Serial|Namespace 1 Size|Temperature|Available Spare:|Percentage Used|Warning|Critical)|Errors|self-assess'
+smartctl -a /dev/nvme0n1 | grep -E '^(Model|Serial|Namespace 1 Size|Temperature|Available Spare:|Percentage Used|Warning|Critical|Media Wearout|Life)|Errors|self-assess'
 echo
 
 # Display
