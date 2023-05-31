@@ -170,7 +170,16 @@ elif [ $link -eq 1 ];then
 else
   # Set that background
   log "I have chosen $background"
-  feh --bg-fill $background
+  if [ "$XDG_CURRENT_DESKTOP" == "i3" ];then
+    feh --bg-fill $background
+  elif [ "$XDG_CURRENT_DESKTOP" == "GNOME" ];then
+    gsettings set org.gnome.desktop.background picture-uri $background
+    gsettings set org.gnome.desktop.background picture-uri-dark $background
+  else
+    gsettings set org.gnome.desktop.background picture-uri $background
+    gsettings set org.gnome.desktop.background picture-uri-dark $background
+    #die 12 "I don't yet know how to set a background on $XDG_CURRENT_DESKTOP"
+  fi
 fi
 
 exit 0
