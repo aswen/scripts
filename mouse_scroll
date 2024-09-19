@@ -85,9 +85,21 @@ log () { printf '%s %s\n' "$(date +%F' '%T)" "$@"; }
 
 # SCRIPT
 xinput list|grep Mouse|while read device;do
+  log "Device=$device"
   eval $(echo $device|grep -Eo 'id=[0-9]{2}')
-  natural_scroll_option_code=$(xinput --list-props $id|awk '/Natural Scrolling Enabled \(/ {sub (/\(/, "");sub (/\)/, "");sub (/\:/, "");print $5}')
-  xinput set-int-prop $id $natural_scroll_option_code 8 1
+  device_name="$(xinput list --name-only $id)"
+  natural_scroll_option_status=$(xinput --list-props $id|awk '/Natural Scrolling Enabled \(/ {print $6}')
+  log "ID=$id, name=$device_name and Natural scrolling status=$natural_scroll_option_status"
+  xinput set-int-prop "$device_name" "libinput Natural Scrolling Enabled" 8 1
+  xinput list-props "$device_name" |grep "Natural Scrolling Enabled ("
+
+  # When "Logitech USB Laser Mouse" is present:
+  if [[ "$device_name" == "Logitech USB Laser Mouse" ]];then
+    log "Increase speed of $device_name."
+    xinput set-prop "$device_name" "Coordinate Transformation Matrix" 2 0 0 0 2 0 0 0 1
+    xinput list-props "$device_name"|grep "Coordinate Transformation Matrix"
+  fi
 done
+
 
 # END
