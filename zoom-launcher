@@ -48,6 +48,14 @@ saver_off () {
 saver_off
 v4l2-ctl -d $video_device --set-ctrl=white_balance_automatic=0,power_line_frequency=1
 v4l2-ctl -d $video_device --set-ctrl=white_balance_temperature=3200,sharpness=200
+# Since the latest version of Zoom (6.2.0) screensharing resulted in a black
+# window for me, while remote viewers are able to see my shared object.
+# I found that xcompmgr helps fixing it:
+# https://support.zoom.com/hc/nl/article?id=zm_kb&sysparm_article=KB0060528#collapseLinux
+# https://wiki.archlinux.org/title/Xcompmgr#Toggle_Xcompmgr is the place where I
+# found this command.
+xcompmgr -c -C -t-5 -l-5 -r4.2 -o.55 &
 zoom
+pkill xcompmgr
 saver_on
 # END
